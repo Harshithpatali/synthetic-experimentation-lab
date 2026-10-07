@@ -151,6 +151,8 @@ def test_multiple_experiment_types_produce_outcomes():
             "aov": item["aov"],
             "recency_days": item["recency_days"],
             "sessions_30d": item["sessions_30d"],
+            "cart_abandonments": item["cart_abandonments"],
+            "device": item["device"],
             "customer_type": item["customer_type"],
         }
         for item in population.customers

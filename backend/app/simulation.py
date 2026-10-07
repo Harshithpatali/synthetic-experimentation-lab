@@ -42,7 +42,7 @@ CITIES = [
     ("Nashik", "Maharashtra", 19.9975, 73.7898, 1.8),
     ("Mysuru", "Karnataka", 12.2958, 76.6394, 1.5),
     ("Mangaluru", "Karnataka", 12.9141, 74.8560, 1.3),
-    ("MaduraI", "Tamil Nadu", 9.9252, 78.1198, 1.5),
+    ("Madurai", "Tamil Nadu", 9.9252, 78.1198, 1.5),
     ("Salem", "Tamil Nadu", 11.6643, 78.1460, 1.2),
     ("Tiruchirappalli", "Tamil Nadu", 10.7905, 78.7047, 1.2),
     ("Kota", "Rajasthan", 25.2138, 75.8648, 1.2),

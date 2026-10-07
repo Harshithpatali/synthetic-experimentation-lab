@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import gc
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -21,7 +22,7 @@ from .models import (
     SimulatorTruth,
 )
 from .schemas import ExperimentCreate, PopulationCreate
-from .simulation import build_similarity_edges, generate_population, simulate_outcomes
+from .simulation import generate_population, iter_similarity_edges, simulate_outcomes
 
 
 @asynccontextmanager
@@ -81,35 +82,58 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
             },
         )
     )
-    # Flush the parent row before bulk-inserting children. SQLAlchemy delays
-    # the INSERT for db.add() until flush/commit; the child tables have a
-    # foreign key to population_runs, so the parent must exist first.
     db.flush()
 
-    # Core/PostgreSQL executemany inserts are much faster than creating
-    # thousands of SQLAlchemy ORM objects one at a time.
-    db.execute(
-        insert(Customer),
-        [{**customer, "population_id": population_id} for customer in population.customers],
-    )
-    db.execute(
-        insert(SimulatorTruth),
-        [{**truth, "population_id": population_id} for truth in population.truth],
-    )
+    # Bound executemany payloads. The previous implementation built complete
+    # 30k-row dictionaries twice, creating unnecessary Python heap pressure.
+    def insert_in_batches(model, rows, batch_size=2000):
+        batch = []
+        for row in rows:
+            payload = dict(row)
+            payload["population_id"] = population_id
+            batch.append(payload)
 
-    # Store the company-observable network for the interactive India map.
-    # Hidden truth variables remain available for the simulator but are not
-    # materialized into the public network at population-generation time.
-    edges = build_similarity_edges(
-        population.customers,
-        population.truth,
+            if len(batch) >= batch_size:
+                db.execute(insert(model), batch)
+                batch.clear()
+
+        if batch:
+            db.execute(insert(model), batch)
+
+    insert_in_batches(Customer, population.customers)
+    insert_in_batches(SimulatorTruth, population.truth)
+
+    # Observable graph construction does not need hidden simulator truth.
+    # Release the truth list before the graph phase.
+    customers = population.customers
+    del population
+    gc.collect()
+
+    # Stream graph rows directly into PostgreSQL in small batches instead of
+    # retaining hundreds of thousands of edge dictionaries in RAM.
+    edge_batch = []
+    edges_inserted = 0
+
+    for edge in iter_similarity_edges(
+        customers,
+        [],
         "observable",
         max_edges_per_node=1,
-    )
-    db.execute(
-        insert(CustomerEdge),
-        [{**edge, "population_id": population_id} for edge in edges],
-    )
+    ):
+        edge["population_id"] = population_id
+        edge_batch.append(edge)
+
+        if len(edge_batch) >= 2000:
+            db.execute(insert(CustomerEdge), edge_batch)
+            edges_inserted += len(edge_batch)
+            edge_batch.clear()
+
+    if edge_batch:
+        db.execute(insert(CustomerEdge), edge_batch)
+        edges_inserted += len(edge_batch)
+
+    del customers
+    gc.collect()
 
     db.commit()
 
@@ -117,6 +141,7 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
         "population_id": population_id,
         "size": req.size,
         "seed": req.seed,
+        "network_edges": edges_inserted,
     }
 
 
@@ -128,60 +153,82 @@ def rebuild_population_network(
     """
     Rebuild the observable network for an existing population.
 
-    This is useful for populations generated with an older same-city network
-    implementation. The rebuilt graph uses global cross-city feature edges.
+    Rows and graph edges are processed with bounded memory so older 30k
+    populations can be rebuilt on the small Render instance as well.
     """
-    customers = (
-        db.query(Customer)
+    rows = (
+        db.query(
+            Customer.id,
+            Customer.age,
+            Customer.gender,
+            Customer.city,
+            Customer.state,
+            Customer.device,
+            Customer.customer_type,
+            Customer.orders,
+            Customer.aov,
+            Customer.recency_days,
+            Customer.sessions_30d,
+            Customer.cart_abandonments,
+        )
         .filter(Customer.population_id == population_id)
-        .all()
+        .yield_per(2000)
     )
-    if not customers:
-        raise HTTPException(status_code=404, detail="Population not found")
 
     customer_dicts = [
         {
-            "id": customer.id,
-            "age": customer.age,
-            "gender": customer.gender,
-            "city": customer.city,
-            "state": customer.state,
-            "lat": customer.lat,
-            "lon": customer.lon,
-            "device": customer.device,
-            "customer_type": customer.customer_type,
-            "orders": customer.orders,
-            "aov": customer.aov,
-            "recency_days": customer.recency_days,
-            "sessions_30d": customer.sessions_30d,
-            "cart_abandonments": customer.cart_abandonments,
+            "id": row.id,
+            "age": row.age,
+            "gender": row.gender,
+            "city": row.city,
+            "state": row.state,
+            "device": row.device,
+            "customer_type": row.customer_type,
+            "orders": row.orders,
+            "aov": row.aov,
+            "recency_days": row.recency_days,
+            "sessions_30d": row.sessions_30d,
+            "cart_abandonments": row.cart_abandonments,
         }
-        for customer in customers
+        for row in rows
     ]
+
+    if not customer_dicts:
+        raise HTTPException(status_code=404, detail="Population not found")
 
     db.query(CustomerEdge).filter(
         CustomerEdge.population_id == population_id,
         CustomerEdge.view == "observable",
     ).delete(synchronize_session=False)
 
-    edges = build_similarity_edges(
+    edge_batch = []
+    edges_inserted = 0
+
+    for edge in iter_similarity_edges(
         customer_dicts,
         [],
         "observable",
         max_edges_per_node=1,
-    )
+    ):
+        edge["population_id"] = population_id
+        edge_batch.append(edge)
 
-    if edges:
-        db.execute(
-            insert(CustomerEdge),
-            [{**edge, "population_id": population_id} for edge in edges],
-        )
+        if len(edge_batch) >= 2000:
+            db.execute(insert(CustomerEdge), edge_batch)
+            edges_inserted += len(edge_batch)
+            edge_batch.clear()
 
+    if edge_batch:
+        db.execute(insert(CustomerEdge), edge_batch)
+        edges_inserted += len(edge_batch)
+
+    del customer_dicts
+    gc.collect()
     db.commit()
 
     return {
         "population_id": population_id,
-        "edges_rebuilt": len(edges),
+        "edges_rebuilt": edges_inserted,
         "network": "global cross-city feature similarity",
     }
 

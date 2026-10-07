@@ -1,7 +1,0 @@
-{
-  "name":"synthetic-experimentation-lab-cloudflare",
-  "private":true,
-  "version":"2.0.0",
-  "scripts":{"dev":"wrangler dev","deploy":"wrangler deploy"},
-  "devDependencies":{"@cloudflare/workers-types":"latest","wrangler":"latest"}
-}

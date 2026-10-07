@@ -850,14 +850,15 @@ if page == PAGE_NAMES[0]:
               <h4>What gets generated</h4>
               <div class="desc">
                 A geographically grounded Indian customer base with hidden
-                simulator behaviour and an observable similarity network.
+                simulator behaviour. The observable similarity network is built
+                on demand when you open the map.
               </div>
               <ul style="color:#475569;font-size:.88rem;line-height:1.75;margin:0;padding-left:1.1rem;">
                 <li>Lat / lon jittered around major Indian city centres</li>
                 <li>Correlated age, income, engagement, spending and digital behaviour</li>
                 <li>Customer lifecycle: New, Repeat, Loyal</li>
                 <li>Hidden response behaviour used only by the simulator</li>
-                <li>Global cross-city similarity edges by observable feature</li>
+                <li>Global cross-city similarity network available on demand</li>
               </ul>
             </div>
             """,
@@ -866,7 +867,7 @@ if page == PAGE_NAMES[0]:
 
     if generate:
         try:
-            with st.spinner("Generating customers, hidden simulator behaviour, and observable network…"):
+            with st.spinner("Generating customers and hidden simulator behaviour…"):
                 result = post(
                     "/population/generate",
                     {"size": population_size, "seed": population_seed},
@@ -906,8 +907,8 @@ if page == PAGE_NAMES[0]:
                 },
                 {
                     "label": "Network",
-                    "value": "Global",
-                    "sub": "Cross-city feature similarity",
+                    "value": "On demand",
+                    "sub": "Built when map is opened",
                 },
                 {
                     "label": "Next step",
@@ -1100,7 +1101,7 @@ elif page == PAGE_NAMES[1]:
     section(
         "Interactive India population map",
         "Pan, zoom, filter and inspect every synthetic customer. "
-        "Toggle the similarity network and the density layer.",
+        "The map loads first; the similarity network can be built on demand.",
     )
 
     try:
@@ -1151,7 +1152,7 @@ elif page == PAGE_NAMES[1]:
                     step=900,
                     help="The budget is shared roughly equally across selected features.",
                 )
-                show_edges = st.toggle("Show similarity network", value=True)
+                show_edges = st.toggle("Show similarity network", value=False)
 
             with c4:
                 edge_opacity = st.slider(

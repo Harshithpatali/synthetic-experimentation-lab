@@ -270,12 +270,13 @@ def load_population_map(population_id: str):
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_network(population_id: str, limit: int):
+def load_network(population_id: str, limit: int, features: tuple[str, ...]):
     return get(
         "/network",
         population_id=population_id,
         view="observable",
         limit=limit,
+        features=",".join(features),
     )
 
 
@@ -383,6 +384,42 @@ MAP_STYLES = {
     "Streets (OpenStreetMap)": "open-street-map",
 }
 
+EDGE_FEATURES = [
+    "gender",
+    "device",
+    "customer_type",
+    "age",
+    "orders",
+    "aov",
+    "recency",
+    "sessions",
+    "cart_abandonments",
+]
+
+EDGE_FEATURE_LABELS = {
+    "gender": "Gender",
+    "device": "Device",
+    "customer_type": "Customer type",
+    "age": "Age",
+    "orders": "Orders",
+    "aov": "AOV",
+    "recency": "Recency",
+    "sessions": "Sessions",
+    "cart_abandonments": "Cart abandonment",
+}
+
+EDGE_FEATURE_COLORS = {
+    "gender": "#ef4444",
+    "device": "#f59e0b",
+    "customer_type": "#10b981",
+    "age": "#3b82f6",
+    "orders": "#8b5cf6",
+    "aov": "#ec4899",
+    "recency": "#06b6d4",
+    "sessions": "#84cc16",
+    "cart_abandonments": "#f97316",
+}
+
 
 def build_india_map(
     points: pd.DataFrame,
@@ -425,34 +462,76 @@ def build_india_map(
             )
         )
 
-    # --- Similarity edges ----------------------------------------------------
+    # --- Feature-level similarity edges --------------------------------------
     if show_edges and edges:
         coords = pts.set_index("id")[["lat", "lon"]]
-        edge_lat, edge_lon = [], []
-        for edge in edges:
-            source = edge.get("source")
-            target = edge.get("target")
-            if source not in coords.index or target not in coords.index:
-                continue
-            edge_lat.extend(
-                [coords.at[source, "lat"], coords.at[target, "lat"], None]
-            )
-            edge_lon.extend(
-                [coords.at[source, "lon"], coords.at[target, "lon"], None]
-            )
+        grouped: dict[str, list[dict]] = {}
 
-        if edge_lat:
+        for edge in edges:
+            feature = edge.get("feature", "unknown")
+            grouped.setdefault(feature, []).append(edge)
+
+        for feature, feature_edges in grouped.items():
+            edge_lat, edge_lon, edge_hover = [], [], []
+
+            for edge in feature_edges:
+                source = edge.get("source")
+                target = edge.get("target")
+                if source not in coords.index or target not in coords.index:
+                    continue
+
+                source_lat = coords.at[source, "lat"]
+                source_lon = coords.at[source, "lon"]
+                target_lat = coords.at[target, "lat"]
+                target_lon = coords.at[target, "lon"]
+
+                edge_lat.extend([source_lat, target_lat, None])
+                edge_lon.extend([source_lon, target_lon, None])
+
+                label = EDGE_FEATURE_LABELS.get(
+                    feature,
+                    edge.get("feature_label", "Similarity"),
+                )
+                weight = float(edge.get("weight", 0.0))
+                reasons = edge.get("reasons") or []
+                reason_text = "<br>".join(str(item) for item in reasons)
+
+                edge_hover.extend(
+                    [
+                        (
+                            f"<b>{label}</b><br>"
+                            f"Similarity: {weight:.2f}<br>"
+                            f"{reason_text}<extra></extra>"
+                        ),
+                        (
+                            f"<b>{label}</b><br>"
+                            f"Similarity: {weight:.2f}<br>"
+                            f"{reason_text}<extra></extra>"
+                        ),
+                        None,
+                    ]
+                )
+
+            if not edge_lat:
+                continue
+
+            rgba = EDGE_FEATURE_COLORS.get(feature, "#64748b")
             fig.add_trace(
                 go.Scattermap(
                     lat=edge_lat,
                     lon=edge_lon,
                     mode="lines",
                     line=dict(
-                        width=0.75,
-                        color=f"rgba(99,102,241,{edge_opacity})",
+                        width=1.1,
+                        color=rgba,
                     ),
-                    hoverinfo="skip",
-                    name="Similarity edges",
+                    text=edge_hover,
+                    hovertemplate="%{text}",
+                    opacity=max(0.15, min(edge_opacity * 2.2, 1.0)),
+                    name=EDGE_FEATURE_LABELS.get(
+                        feature,
+                        feature.replace("_", " ").title(),
+                    ),
                     showlegend=True,
                 )
             )
@@ -821,18 +900,28 @@ elif page == PAGE_NAMES[1]:
             with c3:
                 edge_limit = st.slider(
                     "Similarity edges to load",
-                    min_value=1000,
-                    max_value=10000,
-                    value=6000,
-                    step=1000,
+                    min_value=900,
+                    max_value=18000,
+                    value=9000,
+                    step=900,
+                    help="The budget is shared roughly equally across selected features.",
                 )
                 show_edges = st.toggle("Show similarity network", value=True)
 
             with c4:
                 edge_opacity = st.slider(
-                    "Edge opacity", 0.05, 0.60, 0.22, 0.01
+                    "Edge opacity", 0.05, 0.60, 0.24, 0.01
                 )
                 map_height = st.slider("Map height (px)", 520, 980, 760, 20)
+
+            edge_feature_labels = st.multiselect(
+                "Edge features",
+                options=EDGE_FEATURES,
+                default=EDGE_FEATURES,
+                format_func=lambda value: EDGE_FEATURE_LABELS[value],
+                help="Each observable feature is rendered as a different edge colour. "
+                "Customers can connect across cities when the selected feature supports similarity.",
+            )
 
         # ---- Filters --------------------------------------------------------
         f1, f2, f3 = st.columns([1.6, 1, 1])
@@ -877,8 +966,14 @@ elif page == PAGE_NAMES[1]:
                 visible_points["gender"].isin(gender_filter)
             ]
 
-        with st.spinner("Loading similarity edges…"):
-            network_payload = load_network(population_id, edge_limit)
+        selected_edge_features = tuple(edge_feature_labels)
+
+        with st.spinner("Loading global feature-level similarity edges…"):
+            network_payload = load_network(
+                population_id,
+                edge_limit,
+                selected_edge_features,
+            )
 
         visible_ids = set(visible_points["id"])
         visible_edges = [

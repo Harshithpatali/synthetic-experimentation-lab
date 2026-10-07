@@ -30,7 +30,7 @@ def test_hidden_boundary():
 
 
 def test_confidence_interval_and_hypothesis_test():
-    result = difference_in_proportions(100, 20, 100, 30)
+    result = difference_in_proportions(100, 20, 100, 35)
 
     assert math.isclose(result["uplift"], 0.1)
     assert result["ci_low"] < 0.1 < result["ci_high"]

@@ -1227,7 +1227,11 @@ elif page == PAGE_NAMES[1]:
                     step=900,
                     help="The budget is shared roughly equally across selected features.",
                 )
-                show_edges = st.toggle("Show similarity network", value=False)
+                show_edges = st.toggle(
+                    "Show similarity network",
+                    value=True,
+                    help="Display the observable cross-city intelligence network.",
+                )
 
             with c4:
                 edge_opacity = st.slider(

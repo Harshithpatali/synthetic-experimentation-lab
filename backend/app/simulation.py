@@ -358,7 +358,7 @@ def generate_population(size, seed):
             0.20
             + 0.22 * (age > 40)
             + 0.18 * (income < 70000)
-            + 0.12 * customer_type == "Loyal"
+            + 0.12 * (customer_type == "Loyal")
             + 0.15 * r.normal(size=size)
         ),
         0,

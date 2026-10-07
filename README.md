@@ -244,6 +244,45 @@ The application creates any missing ORM tables on startup, so a fresh Neon datab
 
 Never commit the Neon connection string to GitHub.
 
+## Cloudflare backend deployment
+
+The production backend can run as a **Cloudflare Container** while the
+Streamlit frontend remains on Streamlit Community Cloud.
+
+This is the recommended deployment target for the current simulator because
+the backend can exceed the 512 MiB memory limit of the previous runtime during
+30,000-customer generation. Cloudflare Containers support configurable instance
+memory; this repository uses the standard-1 profile (4 GiB).
+
+Cloudflare Containers are available on Workers Paid. citeturn423673search2
+
+The repository includes:
+
+    wrangler.toml
+    cloudflare_backend/src/index.js
+    cloudflare_backend/README.md
+
+The container builds the existing backend/Dockerfile, listens on port 8000,
+and passes DATABASE_URL from a Cloudflare Worker Secret into the FastAPI
+container.
+
+Deployment from Cloudflare Workers Builds:
+
+1. Connect the GitHub repository under Workers & Pages -> Workers Builds.
+2. Use the repository root as the build root.
+3. Deploy with:
+
+    npx wrangler deploy
+
+4. Add the Worker Secret DATABASE_URL with the existing Neon PostgreSQL URL.
+5. Optionally add CORS_ORIGINS with a comma-separated list of allowed origins,
+   or leave it as *.
+6. After the container provisions, verify /health.
+7. Set the Streamlit Community Cloud secret API_BASE_URL to the resulting
+   workers.dev URL.
+
+The first container deployment can take several minutes to provision. citeturn340006view0
+
 ## Deploy the backend to Render
 
 Create the backend as a normal Render Web Service. Do not use a Blueprint for this deployment.

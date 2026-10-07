@@ -408,6 +408,7 @@ def simulate_outcomes(
     customers,
     truth_by_customer,
     category,
+    experiment_type,
     treatment_share,
     seed,
 ):
@@ -418,19 +419,47 @@ def simulate_outcomes(
         rng.permutation(n)[: int(n * treatment_share)]
     )
 
-    fields = {
-        "Beauty": ("beauty_affinity", 0.10),
-        "Electronics": ("electronics_affinity", 0.08),
-        "Grocery": ("grocery_affinity", 0.06),
+    affinity_fields = {
+        "Beauty": "beauty_affinity",
+        "Electronics": "electronics_affinity",
+        "Grocery": "grocery_affinity",
     }
 
-    field, base = fields.get(category, fields["Beauty"])
+    affinity = {}
+    for customer in customers:
+        hidden = truth_by_customer[customer["id"]]
+        field = affinity_fields.get(category)
+        if field:
+            value = hidden[field]
+        else:
+            value = (
+                hidden["beauty_affinity"]
+                + hidden["electronics_affinity"]
+                + hidden["grocery_affinity"]
+            ) / 3.0
+        affinity[customer["id"]] = float(value)
+
+    # Different business experiments should not all behave like a beauty offer.
+    # These are simulator priors, not claims about real-world effect sizes.
+    effect_base = {
+        "Marketing campaign": 0.075,
+        "Product promotion": 0.085,
+        "New UI / feature": 0.055,
+        "Checkout redesign": 0.080,
+        "Pricing / discount": 0.095,
+        "Recommendation / personalization": 0.070,
+        "Messaging / copy": 0.045,
+        "Retention / loyalty": 0.060,
+        "Search / discovery": 0.050,
+        "Other": 0.050,
+    }.get(experiment_type, 0.060)
+
     outcomes = []
     segments = {}
 
     for i, customer in enumerate(customers):
         hidden = truth_by_customer[customer["id"]]
-        affinity = hidden[field]
+        customer_affinity = affinity[customer["id"]]
 
         baseline = (
             -2.05
@@ -438,18 +467,49 @@ def simulate_outcomes(
             + 0.08 * customer["sessions_30d"]
             - 0.012 * customer["recency_days"]
             - 0.55 * hidden["price_sensitivity"]
-            + 0.30 * affinity
+            + 0.30 * customer_affinity
         )
 
         effect = (
-            base
-            * (0.65 + 0.9 * affinity)
-            * (1 - 0.45 * hidden["price_sensitivity"])
-            + 0.035 * hidden["novelty_preference"]
+            effect_base
+            * (0.70 + 0.85 * customer_affinity)
+            * (1 - 0.35 * hidden["price_sensitivity"])
         )
 
-        if category == "Beauty" and customer["gender"] == "Female":
-            effect *= 1.22
+        # Scenario-specific response mechanisms make the simulator useful for
+        # different business questions instead of treating every change as an
+        # offer campaign.
+        if experiment_type == "New UI / feature":
+            mobile_lift = 1.0 + 0.18 * (customer["device"] == "Mobile")
+            effect *= mobile_lift + 0.12 * hidden["novelty_preference"]
+
+        elif experiment_type == "Checkout redesign":
+            abandonment_factor = 1.0 + 0.20 * (
+                customer["cart_abandonments"] / max(customer["sessions_30d"], 1)
+            )
+            effect *= abandonment_factor
+
+        elif experiment_type == "Pricing / discount":
+            effect *= 1.0 + 0.45 * hidden["price_sensitivity"]
+
+        elif experiment_type == "Recommendation / personalization":
+            effect *= 1.0 + 0.30 * customer_affinity + 0.15 * hidden["novelty_preference"]
+
+        elif experiment_type == "Messaging / copy":
+            effect *= 0.85 + 0.35 * hidden["novelty_preference"]
+
+        elif experiment_type == "Retention / loyalty":
+            effect *= (
+                0.85
+                + 0.20 * (customer["customer_type"] == "Repeat")
+                + 0.30 * (customer["customer_type"] == "Loyal")
+            )
+
+        elif experiment_type == "Search / discovery":
+            effect *= 0.90 + 0.25 * hidden["novelty_preference"]
+
+        else:
+            effect *= 0.95 + 0.10 * hidden["novelty_preference"]
 
         converted = bool(
             rng.random()

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
-from .analytics import difference_in_proportions, segment_results
+from .analytics import ALPHA, TARGET_POWER, difference_in_proportions, segment_results
 from .population_quality import population_diagnostics
 from .reference_behavior import compare_to_real_reference, reference_summary
 from .config import CORS_ORIGINS
@@ -35,7 +35,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Synthetic Experimentation Lab API",
-    version="2.2.0",
+    version="2.3.0",
     description="Test experiments on a synthetic population before exposing real customers.",
     lifespan=lifespan,
 )
@@ -681,6 +681,8 @@ def run_experiment(req: ExperimentCreate, db: Session = Depends(get_db)):
             else None
         ),
         "ci_95": [stats["ci_low"], stats["ci_high"]],
+        "hypothesis_test": stats["hypothesis_test"],
+        "power_analysis": stats["power_analysis"],
         "segments": segment_rows,
         "interpretation": (
             "The 95% interval reflects randomization/sampling variability in "
@@ -762,6 +764,8 @@ def experiment_detail(
             if stats["control_rate"] else None
         ),
         "ci_95": [stats["ci_low"], stats["ci_high"]],
+        "hypothesis_test": stats["hypothesis_test"],
+        "power_analysis": stats["power_analysis"],
         "segments": [
             {
                 "segment": row.segment,

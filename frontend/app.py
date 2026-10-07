@@ -2,7 +2,6 @@ import json
 import os
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -291,12 +290,29 @@ def api_error(response: requests.Response) -> str:
     return f"Backend returned HTTP {response.status_code}."
 
 
+@st.cache_resource
+def get_http_session() -> requests.Session:
+    """Reuse one HTTP connection pool across Streamlit reruns."""
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": "Synthetic-Experimentation-Lab/1.0",
+            "Accept": "application/json",
+        }
+    )
+    return session
+
+
 def get(path: str, **params):
     if not API:
         raise RuntimeError(
             "API_BASE_URL is not configured. Add it to Streamlit Cloud Secrets."
         )
-    response = requests.get(API + path, params=params, timeout=180)
+    response = get_http_session().get(
+        API + path,
+        params=params,
+        timeout=180,
+    )
     if not response.ok:
         raise RuntimeError(api_error(response))
     return response.json()
@@ -307,18 +323,27 @@ def post(path: str, payload: dict):
         raise RuntimeError(
             "API_BASE_URL is not configured. Add it to Streamlit Cloud Secrets."
         )
-    response = requests.post(API + path, json=payload, timeout=600)
+    response = get_http_session().post(
+        API + path,
+        json=payload,
+        timeout=600,
+    )
     if not response.ok:
         raise RuntimeError(api_error(response))
     return response.json()
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=30, max_entries=4, show_spinner=False)
+def load_health():
+    return get("/health")
+
+
+@st.cache_data(ttl=1800, max_entries=8, show_spinner=False)
 def load_population_map(population_id: str):
     return get(f"/population/{population_id}/map", limit=30000)
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=1800, max_entries=32, show_spinner=False)
 def load_network(population_id: str, limit: int, features: tuple[str, ...]):
     return get(
         "/network",
@@ -361,18 +386,6 @@ def kpi_row(items: list[dict]):
                 """,
                 unsafe_allow_html=True,
             )
-
-
-def panel_open(title: str, desc: str = ""):
-    st.markdown(
-        f"""
-        <div class="panel">
-          <h4>{title}</h4>
-          <div class="desc">{desc}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def section(title: str, subtitle: str = ""):
@@ -718,42 +731,31 @@ with st.sidebar:
     choice = st.radio("Workflow", labels, label_visibility="collapsed")
     page = PAGE_NAMES[labels.index(choice)]
 
-    st.markdown('<div class="side-label">Backend</div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="side-label">System</div>', unsafe_allow_html=True)
     if API:
         try:
-            health = get("/health")
+            load_health()
             st.markdown(
-                '<div class="badge ok"><span class="dot"></span>FastAPI + Neon connected</div>',
+                '<div class="badge ok"><span class="dot"></span>Simulation engine ready</div>',
                 unsafe_allow_html=True,
             )
-            st.caption(API)
-            st.caption(f"Database: {health.get('database', 'unknown')}")
-        except Exception as exc:
+        except Exception:
             st.markdown(
-                '<div class="badge bad"><span class="dot"></span>Backend unavailable</div>',
+                '<div class="badge bad"><span class="dot"></span>Simulation engine unavailable</div>',
                 unsafe_allow_html=True,
             )
-            st.caption(str(exc))
     else:
         st.markdown(
-            '<div class="badge bad"><span class="dot"></span>API_BASE_URL missing</div>',
+            '<div class="badge bad"><span class="dot"></span>Simulation engine not configured</div>',
             unsafe_allow_html=True,
         )
 
-    st.markdown('<div class="side-label">Session</div>', unsafe_allow_html=True)
     if st.session_state.get("population_id"):
-        st.caption("Active population")
-        st.code(st.session_state["population_id"], language=None)
-    else:
-        st.caption("No population generated yet.")
-
-    if current_result():
-        st.caption("Experiment result")
-        st.code(current_result()["experiment_id"], language=None)
+        size = st.session_state.get("population_size", 0)
+        st.caption(f"✓ {size:,} synthetic customers ready")
 
     st.divider()
-    if st.button("↺ Reset session", use_container_width=True):
+    if st.button("↺ Start new simulation", use_container_width=True):
         for key in [
             "population_id",
             "population_size",
@@ -764,6 +766,7 @@ with st.sidebar:
             st.session_state.pop(key, None)
         load_population_map.clear()
         load_network.clear()
+        load_health.clear()
         st.rerun()
 
 
@@ -1017,12 +1020,15 @@ elif page == PAGE_NAMES[1]:
 
         selected_edge_features = tuple(edge_feature_labels)
 
-        with st.spinner("Loading global feature-level similarity edges…"):
-            network_payload = load_network(
-                population_id,
-                edge_limit,
-                selected_edge_features,
-            )
+        if show_edges and selected_edge_features:
+            with st.spinner("Loading global feature-level similarity edges…"):
+                network_payload = load_network(
+                    population_id,
+                    edge_limit,
+                    selected_edge_features,
+                )
+        else:
+            network_payload = {"edges": []}
 
         if (
             show_edges
@@ -1252,7 +1258,7 @@ elif page == PAGE_NAMES[2]:
     kpi_row(
         [
             {"label": "Population", "value": f"{population_size:,}", "sub": "Synthetic customers"},
-            {"label": "Population ID", "value": population_id[:12] + "…", "sub": "Active session"},
+            {"label": "Population", "value": f"{population_size:,}", "sub": "Synthetic customers"},
             {"label": "Randomisation", "value": "Customer-level", "sub": "Treatment vs control"},
             {"label": "Status", "value": "Ready", "sub": "Configure and run"},
         ]

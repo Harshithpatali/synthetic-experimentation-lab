@@ -857,11 +857,6 @@ if page == PAGE_NAMES[0]:
         kpi_row(
             [
                 {
-                    "label": "Population ID",
-                    "value": st.session_state["population_id"][:12] + "…",
-                    "sub": "Use this across every page",
-                },
-                {
                     "label": "Customers",
                     "value": f"{st.session_state.get('population_size', 0):,}",
                     "sub": "Synthetic Indian customers",
@@ -872,9 +867,14 @@ if page == PAGE_NAMES[0]:
                     "sub": "Reproducible generation",
                 },
                 {
+                    "label": "Network",
+                    "value": "Global",
+                    "sub": "Cross-city feature similarity",
+                },
+                {
                     "label": "Next step",
-                    "value": "Page 2",
-                    "sub": "Explore the interactive map",
+                    "value": "Map",
+                    "sub": "Explore customer relationships",
                 },
             ]
         )
@@ -922,9 +922,9 @@ elif page == PAGE_NAMES[1]:
                 {"label": "Indian cities", "value": f"{points['city'].nunique():,}", "sub": "Unique city centres"},
                 {"label": "States / UTs", "value": f"{points['state'].nunique():,}", "sub": "Geographic spread"},
                 {
-                    "label": "Population ID",
-                    "value": population_id[:12] + "…",
-                    "sub": "Active session population",
+                    "label": "Network",
+                    "value": "Global",
+                    "sub": "Cross-city feature similarity",
                 },
             ]
         )
@@ -1258,7 +1258,7 @@ elif page == PAGE_NAMES[2]:
     kpi_row(
         [
             {"label": "Population", "value": f"{population_size:,}", "sub": "Synthetic customers"},
-            {"label": "Population", "value": f"{population_size:,}", "sub": "Synthetic customers"},
+            {"label": "Experiment type", "value": "Choose below", "sub": "Campaign · UI · pricing · checkout"},
             {"label": "Randomisation", "value": "Customer-level", "sub": "Treatment vs control"},
             {"label": "Status", "value": "Ready", "sub": "Configure and run"},
         ]

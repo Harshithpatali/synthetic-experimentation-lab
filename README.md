@@ -154,7 +154,7 @@ Never commit the Neon connection string to GitHub.
 
 ## Deploy the backend to Render
 
-The repository includes render.yaml so the backend can be created as a Render Blueprint.
+Create the backend as a normal Render Web Service. Do not use a Blueprint for this deployment.
 
 The Render service is configured as:
 

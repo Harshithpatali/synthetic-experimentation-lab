@@ -254,7 +254,7 @@ the backend can exceed the 512 MiB memory limit of the previous runtime during
 30,000-customer generation. Cloudflare Containers support configurable instance
 memory; this repository uses the standard-1 profile (4 GiB).
 
-Cloudflare Containers are available on Workers Paid. citeturn423673search2
+Cloudflare Containers are available on Workers Paid.
 
 The repository includes:
 
@@ -281,7 +281,7 @@ Deployment from Cloudflare Workers Builds:
 7. Set the Streamlit Community Cloud secret API_BASE_URL to the resulting
    workers.dev URL.
 
-The first container deployment can take several minutes to provision. citeturn340006view0
+The first container deployment can take several minutes to provision.
 
 ## Deploy the backend to Render
 

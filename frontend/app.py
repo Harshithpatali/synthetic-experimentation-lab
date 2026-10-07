@@ -658,10 +658,6 @@ def build_india_map(
                         size=marker_size,
                         opacity=0.74,
                         color=colors.get(name, TECH_MARKER_COLOR),
-                        line=dict(
-                            color=TECH_MARKER_BORDER,
-                            width=0.35,
-                        ),
                     ),
                     text=hover.loc[subset.index],
                     hovertemplate="%{text}<extra></extra>",

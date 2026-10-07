@@ -368,11 +368,21 @@ GitHub Actions checks:
 
 The Docker build contexts in CI match the contexts used by the deployment configuration.
 
-## Statistical warning
+## Statistical methodology
 
-The 95% confidence interval describes randomization/sampling variability in the synthetic run. It does not capture uncertainty from simulator assumptions.
+The experiment report includes:
 
-A positive simulated uplift is a reason to consider a real-world pilot, not evidence that the real experiment will achieve the same effect.
+- **Absolute and relative uplift** between treatment and control.
+- **95% confidence interval** for the difference in conversion proportions using a normal approximation.
+- **Two-sided two-proportion z-test** with H0: treatment conversion = control conversion and H1: treatment conversion != control conversion.
+- **p-value and alpha=0.05 decision** for the simulated conversion-rate difference.
+- **Approximate 80% power MDE** showing the smallest positive conversion-rate uplift expected to be detectable with the current arm sizes under a normal approximation.
+
+The p-value and confidence interval describe randomization/sampling variability **within the synthetic run**. They do not capture uncertainty from simulator assumptions.
+
+The MDE is a design-sensitivity measure, not a guarantee that a real experiment will detect an effect of that size.
+
+A positive or statistically significant synthetic uplift is a reason to consider a controlled real-world pilot, not evidence that the real experiment will achieve the same effect.
 
 ## Current deployment boundary
 
@@ -387,6 +397,12 @@ The deployed system has a deliberately simple boundary:
        | SQL over TLS
        v
     Neon PostgreSQL
+
+Population generation is intentionally separated from graph construction: the
+30,000-customer population is persisted first, and the observable similarity
+network is built on demand when the map network layer is activated. This keeps
+the initial generation path fast and reduces peak memory usage on the small
+Render instance.
 
 Only the FastAPI service holds the database connection string.
 

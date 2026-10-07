@@ -120,7 +120,7 @@ The production frontend is organized as five company-facing pages:
 
 1. Generate Population — create up to 30,000 synthetic customers.
 2. India Population Map — plot the synthetic population on a geographic India map and connect the strongest observable-similarity edges.
-3. Company Experiment — define the hypothesis, treatment/offer, target segment, success metric, category, treatment share, and seed.
+3. Company Experiment — choose an experiment type such as a marketing campaign, product promotion, new UI/feature, checkout redesign, pricing, personalization, messaging, retention, or search; then define the product/experience, control, treatment, target segment, success metric, treatment share, and seed.
 4. Treatment vs Control — inspect conversion, uplift, confidence interval, revenue, arm sizes, and segment results.
 5. Experiment Report — produce an executive recommendation and download a Markdown report.
 

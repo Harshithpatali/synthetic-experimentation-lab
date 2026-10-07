@@ -506,6 +506,8 @@ def run_experiment(req: ExperimentCreate, db: Session = Depends(get_db)):
             "aov": customer.aov,
             "recency_days": customer.recency_days,
             "sessions_30d": customer.sessions_30d,
+            "cart_abandonments": customer.cart_abandonments,
+            "device": customer.device,
             "customer_type": customer.customer_type,
         }
         for customer in customers

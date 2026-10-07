@@ -1,121 +1,990 @@
-# Synthetic Experimentation Lab
 
-**Test the experiment before testing it on real customers.**
+# 🧪 Synthetic Experimentation Lab
 
-A Python data-science platform that creates a synthetic customer population, randomizes customers into control/treatment, simulates heterogeneous outcomes, and lets a company inspect uplift, uncertainty, segments, and observable similarity structure before running a real-world pilot.
+> **Test the experiment before testing it on real customers.**
 
-## Production architecture
+Synthetic Experimentation Lab is a full-stack data-science experimentation platform that creates a **synthetic Indian customer population**, stores it in **Neon PostgreSQL**, visualizes the population as a **cyber-intelligence customer network**, simulates randomized **control vs treatment experiments**, and produces an experiment report with **uplift, confidence intervals, hypothesis testing, p-values, segment analysis, and approximate power/MDE analysis**.
 
-    Streamlit Community Cloud
-             |
-             | HTTPS
-             v
-    Render Web Service
-      Docker + FastAPI
-             |
-             | SSL
-             v
-       Neon PostgreSQL
+The core idea is:
 
-- Frontend: Streamlit
-- Backend: FastAPI + Python
-- Backend packaging: Docker
-- Backend hosting: Render
-- Database: Neon PostgreSQL
-- Frontend hosting: Streamlit Community Cloud
-- No React
-- No Cloudflare runtime required
-- No R2
-- No D1
-
-## Product flow
-
-    Company experiment idea
-             |
-             v
-    Synthetic population
-             |
-             v
-    Observable + hidden simulator behavior
-             |
-             v
-    Random control / treatment assignment
-             |
-             v
-    Simulated customer responses
-             |
-             v
-    Uplift + uncertainty + segment analysis
-             |
-             v
+    Business idea
+         ↓
+    Synthetic customer population
+         ↓
+    Observable behavior + hidden simulator behavior
+         ↓
+    Randomized treatment / control
+         ↓
+    Simulated outcomes
+         ↓
+    Uplift + uncertainty + statistical test
+         ↓
     Decision about a real-world pilot
 
-## Population generation model
+The application is a **decision-support sandbox**, not a replacement for a real A/B test.
 
-The population generator uses a correlated latent-factor model rather than
-independent random draws. Latent socioeconomic, engagement, digital, price,
-novelty, and risk factors induce relationships among age, income, order
-frequency, AOV, sessions, recency, device usage, cart abandonment, lifecycle
-state, and product affinity.
+---
 
-This improves internal behavioural coherence while keeping the generator
-lightweight: it uses NumPy only and does not call an LLM or external
-generation API.
+# 🚀 What the project does
 
-The application also provides an on-demand **Population Diagnostics** view.
-It checks structural relationships such as income↔AOV, orders↔sessions,
-engagement↔recency, lifecycle ordering, cart-friction behaviour, and geographic
-diversity.
+A company can ask:
 
-The diagnostics score is explicitly a **generator-consistency score**. It is
-not a claim that the synthetic population matches real people. Real-world
-fidelity requires calibration against a reference dataset supplied by the
-company.
+- Should we run this marketing campaign?
+- Would a new product promotion improve conversion?
+- Could a checkout redesign reduce abandonment?
+- Would a pricing or discount change help?
+- Would personalization improve performance?
+- Should we test a new UI or feature?
+- Which customer segments appear to respond best?
+- How large would the detectable effect need to be?
 
-## Real-data behavioral benchmark
+The platform lets the company explore those questions **before exposing real customers**.
 
-The repository now includes a small **real, non-synthetic reference sample**
-at:
+The synthetic population is deliberately structured rather than being a collection of independent random columns. The generator creates relationships among demographics, economic behavior, engagement, purchasing activity, lifecycle, device usage, and product affinity.
+
+The platform separates:
+
+    What a company can observe
+
+from:
+
+    What the simulator knows internally to generate heterogeneous outcomes.
+
+That separation is central to the product.
+
+---
+
+# 🏗️ Production architecture
+
+    Streamlit Community Cloud
+              │
+              │ HTTPS + JSON
+              ▼
+    Render Web Service
+    FastAPI + Python + Docker
+              │
+              │ PostgreSQL / TLS
+              ▼
+    Neon PostgreSQL
+
+### Technology stack
+
+| Layer | Technology |
+|---|---|
+| UI | Streamlit |
+| API | FastAPI |
+| Language | Python 3.12 |
+| Numerical computing | NumPy |
+| Dataframes | Pandas |
+| Visualization | Plotly |
+| ORM | SQLAlchemy |
+| Database driver | psycopg |
+| Database | Neon PostgreSQL |
+| Backend packaging | Docker |
+| Backend hosting | Render |
+| Frontend hosting | Streamlit Community Cloud |
+| Testing | Pytest |
+| CI | GitHub Actions |
+| Optional container runtime | Cloudflare Containers |
+| LLM | None |
+
+There is deliberately **no Groq dependency, no external LLM generation step, and no React dependency**.
+
+The simulator uses numerical/statistical generation rather than text generation.
+
+---
+
+# 🎯 Product workflow
+
+The application is organized into five company-facing workflow pages.
+
+    1. Generate Population
+             ↓
+    2. India Population Map
+             ↓
+    3. Company Experiment
+             ↓
+    4. Treatment vs Control
+             ↓
+    5. Experiment Report
+
+---
+
+# 1. 👥 Generate Population
+
+The first page creates the synthetic customer population.
+
+## Population controls
+
+The UI currently supports:
+
+- population size from 5,000 to 30,000
+- reproducible population seed
+- one-click synthetic population generation
+
+The recommended interactive maximum is **30,000 customers**.
+
+The same seed reproduces the same generated values and behavioral structure. UUID identifiers are generated as identifiers and therefore are not expected to be identical across separate runs.
+
+## What gets generated
+
+The company-facing synthetic customer data contains:
+
+- age
+- gender
+- city
+- state
+- latitude
+- longitude
+- device
+- customer type
+- order frequency
+- average order value
+- recency
+- sessions in the last 30 days
+- cart abandonments
+
+The simulator also creates a separate hidden behavioral state.
+
+---
+
+# 🧬 Synthetic population generation model
+
+The population is not generated by independently sampling every column.
+
+Instead, the generator begins with a correlated latent-factor model.
+
+## Latent factors
+
+Six latent behavioral dimensions are used:
+
+    Socioeconomic
+    Engagement
+    Digital
+    Price
+    Novelty
+    Risk
+
+A correlation matrix and Cholesky decomposition are used to generate correlated latent variables.
+
+These latent factors then influence downstream customer attributes.
+
+## Behavioral relationships
+
+### Age
+
+Age depends on socioeconomic position plus stochastic variation and is bounded to the simulator's adult range.
+
+### Income
+
+Income is hidden from the normal company-facing population API and is influenced by:
+
+- socioeconomic behavior
+- age
+- stochastic variation
+
+### Orders
+
+Order frequency depends on:
+
+- socioeconomic position
+- engagement
+- age
+
+### AOV
+
+Average order value depends on:
+
+- socioeconomic behavior
+- purchase frequency
+- age
+- stochastic variation
+
+### Sessions
+
+Session activity depends on:
+
+- engagement
+- order activity
+- digital behavior
+
+### Price sensitivity
+
+Price sensitivity combines:
+
+- bounded stochastic behavior
+- the latent price factor
+- age-related behavior
+
+### Novelty preference
+
+Novelty preference combines:
+
+- stochastic variation
+- novelty behavior
+- digital behavior
+
+### Risk preference
+
+Risk preference combines:
+
+- stochastic variation
+- latent risk behavior
+- novelty preference
+
+### Recency
+
+Recency is behaviorally linked to engagement and price sensitivity instead of being an independent random number.
+
+### Device
+
+Device mix is conditioned by:
+
+- age
+- digital behavior
+
+### Cart abandonment
+
+Cart abandonment is related to:
+
+- price sensitivity
+- device
+- engagement
+- number of sessions
+
+This creates a useful behavioral base for checkout experiments.
+
+### Customer lifecycle
+
+Lifecycle state is derived from order activity and recency:
+
+    New
+    Repeat
+    Loyal
+
+### Product affinity
+
+The simulator creates heterogeneous hidden affinities for:
+
+- Beauty
+- Electronics
+- Grocery
+
+These affinities are used to generate heterogeneous responses to relevant experiments.
+
+---
+
+# 🔐 Observable vs hidden simulator variables
+
+This is a key architectural boundary.
+
+## Company-observable fields
+
+The normal population API exposes:
+
+    age
+    gender
+    city
+    state
+    lat
+    lon
+    device
+    customer_type
+    orders
+    aov
+    recency_days
+    sessions_30d
+    cart_abandonments
+
+## Hidden simulator fields
+
+The simulator stores separately:
+
+    profession
+    income
+    price_sensitivity
+    novelty_preference
+    risk_preference
+    beauty_affinity
+    electronics_affinity
+    grocery_affinity
+
+Hidden variables are used internally to create heterogeneous treatment response.
+
+They are **not returned by the normal company-facing population endpoint**.
+
+This is important because the company should experience the synthetic environment as an experimentation environment, not as a cheat sheet containing the simulator's internal ground truth.
+
+---
+
+# 🧪 Population diagnostics
+
+The application includes a Population Diagnostics view.
+
+This is explicitly a:
+
+> **Generator-consistency diagnostic**
+
+It checks structural properties such as:
+
+- age coverage
+- income ↔ AOV relationship
+- orders ↔ sessions relationship
+- engagement ↔ recency relationship
+- cart-friction behavior
+- lifecycle ordering
+- geographic diversity
+
+The score answers:
+
+> Is the generator behaving consistently with the relationships it was designed to model?
+
+It does **not** claim:
+
+> The synthetic population is statistically identical to real people.
+
+Real-world realism requires calibration against appropriate real customer data.
+
+---
+
+# 📏 Real-data behavioral benchmark
+
+The repository contains a real, non-synthetic benchmark sample:
 
     data/reference/online_retail_real_sample.csv
 
-It contains 1,950 transaction rows from the public **UCI Online Retail II**
-dataset. UCI describes that dataset as real transaction data from a UK-based
-registered non-store online retailer and licenses it under **CC BY 4.0**.
+The bundled sample contains **1,950 real transaction rows** derived from the public **UCI Online Retail II** dataset.
 
-Citation:
+## Source
 
-    Chen, D. (2012). Online Retail II [Dataset].
-    UCI Machine Learning Repository.
+Daqing Chen, Online Retail II
+
+UCI Machine Learning Repository
+
+DOI:
+
     https://doi.org/10.24432/C5CG6D
 
-The application reconstructs customer-level reference behavior from the sample
-and compares the generated population on metrics that both datasets actually
-support:
+License:
+
+    CC BY 4.0
+
+The source is a UK-based non-store online retailer.
+
+## Metrics compared
+
+The application reconstructs customer profiles and compares shared behavioral dimensions:
 
 - order frequency
 - relative AOV distribution shape
 - recency
 - lifecycle composition
 
-The comparison uses empirical distribution distance. AOV is compared by
-relative shape rather than raw currency because the reference is priced in GBP
-while the synthetic application uses INR.
+The comparison uses empirical distribution distance.
 
-This is deliberately a **behavioral benchmark**, not an Indian population
-representativeness claim. The source is UK retail transaction data, so it does
-not validate India-specific demographics, geography, device mix, or currency
-levels. A future calibration release can replace or supplement this benchmark
-with a verified Indian customer dataset when one with clear provenance and
-redistribution terms is available.
+### AOV normalization
 
-## Observable vs hidden variables
+The source data is GBP-denominated while the synthetic application uses INR.
 
-Observable:
+The benchmark therefore compares **relative AOV shape** rather than pretending GBP and INR values are directly comparable.
+
+## Important limitation
+
+This is a **behavioral reference benchmark**, not an Indian population-representativeness test.
+
+It does not establish that the synthetic population matches:
+
+- Indian demographics
+- Indian geography
+- Indian device usage
+- Indian currency behavior
+- Indian customer composition
+
+A future calibration release can add a verified Indian customer dataset when suitable data and redistribution rights are available.
+
+---
+
+# 🗺️ 2. India Population Map
+
+The second page visualizes the synthetic customer population geographically.
+
+Customer locations are generated around major Indian city centers with customer-level geographic jitter.
+
+The population is intentionally spread across many cities instead of being concentrated in one city.
+
+Examples include:
+
+    Delhi
+    Mumbai
+    Bengaluru
+    Hyderabad
+    Chennai
+    Kolkata
+    Pune
+    Ahmedabad
+    Jaipur
+    Surat
+    Lucknow
+    Kanpur
+    Nagpur
+    Indore
+    Bhopal
+    Patna
+    Vadodara
+    Coimbatore
+    Kochi
+    Visakhapatnam
+
+and many other Indian city centers.
+
+---
+
+# 🛰️ Cyber-intelligence map design
+
+The current UI has been designed as a **cyber intelligence / command-center visualization**.
+
+The visual direction includes:
+
+- dark geographic base map
+- neon network links
+- glowing customer nodes
+- feature-specific signal colors
+- dark hover cards
+- subtle grid styling
+- LIVE SIGNAL status indicator
+- technical intelligence header
+- command-center style footer
+
+The visual language is intentionally closer to:
+
+    CUSTOMER INTELLIGENCE GRID // INDIA
+
+than a normal business dashboard map.
+
+The current UI shows synthetic customers as nodes and observable behavioral similarity as links.
+
+---
+
+# 🕸️ Customer similarity network
+
+The map network is an **observable similarity graph**.
+
+An edge means measurable evidence that two synthetic customers are similar on an observable feature.
+
+Available observable graph features:
+
+    gender
+    device
+    customer_type
+    age
+    orders
+    aov
+    recency
+    sessions
+    cart_abandonments
+
+Each feature has its own visual signal/color.
+
+Examples:
+
+    Same gender
+    Same device
+    Same lifecycle
+    Similar age
+    Similar order frequency
+    Similar AOV
+    Similar recency
+    Similar sessions
+    Similar cart abandonment
+
+## Cross-city connections
+
+The network is global across the population.
+
+It is not restricted to same-city relationships.
+
+For example:
+
+    Bengaluru customer
+           │
+           │ similar observable behavior
+           ▼
+    Mumbai customer
+           │
+           │ similar AOV
+           ▼
+    Delhi customer
+
+The city is a geographic attribute. Similarity is computed independently of city boundaries.
+
+## Network semantics
+
+The interpretation is intentionally conservative:
+
+> An edge means measurable observable similarity.
+
+It does not prove:
+
+- true behavioral identity
+- causal similarity
+- social influence
+- common cause
+- peer effects
+
+Likewise:
+
+> No edge does not mean no similarity.
+
+It only means a relationship was not sufficiently observable/measurable under the selected graph construction.
+
+Network centrality is descriptive, not causal influence.
+
+---
+
+# ⚡ On-demand network construction
+
+The network is deliberately separated from the initial population-generation request.
+
+## Fast population path
+
+    Generate customers
+          ↓
+    Generate hidden simulator behavior
+          ↓
+    Batch-write customer rows to Neon
+          ↓
+    Batch-write hidden truth to Neon
+          ↓
+    Return population ID
+
+## Map/network path
+
+    Open India map
+          ↓
+    Similarity network enabled
+          ↓
+    Build/rebuild observable graph when needed
+          ↓
+    Store graph edges in Neon
+          ↓
+    Request strongest selected edges
+          ↓
+    Render the intelligence network
+
+This design reduces the peak memory and latency pressure on the small Render deployment.
+
+New populations therefore do not wait for the entire network to be generated before the population request can complete.
+
+---
+
+# 🧠 Graph performance engineering
+
+An earlier implementation accumulated a large graph in Python before inserting it into PostgreSQL.
+
+For 30,000 customers and nine observable features, this could create a large number of Python dictionaries, UUID strings, JSON objects, and temporary numerical arrays.
+
+The current implementation reduces peak memory through:
+
+1. **On-demand graph construction**
+2. **Batched customer inserts**
+3. **Batched simulator-truth inserts**
+4. **Feature-by-feature graph generation**
+5. **Batched edge inserts**
+6. **Feature-local duplicate tracking**
+7. **Bounded network API payloads**
+8. **Native numerical-library thread limits**
+9. **Explicit cache invalidation on new populations/network rebuilds**
+
+The UI also requests a bounded strongest-edge budget rather than every possible edge.
+
+---
+
+# 📊 3. Company Experiment
+
+The third page is the core experimentation interface.
+
+The product is intentionally generalized rather than being tied to one specific industry.
+
+## Supported experiment types
+
+    Marketing campaign
+    Product promotion
+    New UI / feature
+    Checkout redesign
+    Pricing / discount
+    Recommendation / personalization
+    Messaging / copy
+    Retention / loyalty
+    Search / discovery
+    Other
+
+## Product categories
+
+    General
+    Beauty
+    Electronics
+    Grocery
+    Fashion
+    Home
+    Sports
+    Travel
+    Finance
+    SaaS
+
+## Business input
+
+The user defines:
+
+- experiment/campaign name
+- product/service/experience
+- category
+- business hypothesis
+- control/current experience
+- treatment/proposed experience
+- primary success metric
+- target segment
+- treatment share
+- experiment seed
+
+## Primary metrics
+
+The UI supports:
+
+- conversion rate
+- revenue per customer
+- average order value
+- checkout completion
+- click-through rate
+- add-to-cart rate
+- retention rate
+
+The current simulator's statistical test is based on conversion proportions. The selected business metric is preserved as experiment context for reporting.
+
+---
+
+# 🎲 Experiment simulation engine
+
+Customers are assigned to treatment/control using a seeded random permutation.
+
+The response model is heterogeneous.
+
+Customers do not all receive the same treatment effect.
+
+Baseline response is influenced by combinations of:
+
+- order history
+- session activity
+- recency
+- hidden price sensitivity
+- hidden product affinity
+
+Treatment response varies by experiment type.
+
+## Marketing campaign
+
+Campaign response uses heterogeneous affinity and price sensitivity.
+
+## Product promotion
+
+Product response uses category affinity and behavioral heterogeneity.
+
+## New UI / feature
+
+The response mechanism adds:
+
+- mobile behavior
+- novelty preference
+
+## Checkout redesign
+
+The response mechanism uses:
+
+- cart abandonment
+- session activity
+
+## Pricing / discount
+
+The response mechanism uses:
+
+- price sensitivity
+
+## Recommendation / personalization
+
+The response mechanism uses:
+
+- product affinity
+- novelty preference
+
+## Messaging / copy
+
+The response mechanism uses:
+
+- novelty preference
+
+## Retention / loyalty
+
+The response mechanism uses:
+
+- Repeat lifecycle state
+- Loyal lifecycle state
+
+## Search / discovery
+
+The response mechanism uses:
+
+- novelty preference
+
+These are simulator priors, not claims about measured real-world effect sizes.
+
+---
+
+# 📈 4. Treatment vs Control
+
+The fourth page provides the detailed experiment analysis.
+
+## Core metrics
+
+The result includes:
+
+- control conversion
+- treatment conversion
+- absolute uplift
+- relative uplift
+- control revenue
+- treatment revenue
+- revenue per customer
+- revenue delta
+- 95% confidence interval
+
+## Absolute uplift
+
+    uplift = treatment_rate - control_rate
+
+## Relative uplift
+
+    relative_uplift = (treatment_rate - control_rate) / control_rate
+
+when the control rate is non-zero.
+
+---
+
+# 📐 95% confidence interval
+
+The platform calculates a two-sided confidence interval for the difference in conversion proportions using a normal approximation.
+
+The interval represents:
+
+> Randomization/sampling variability within the synthetic experiment.
+
+It does not include uncertainty about whether the simulator assumptions are correct.
+
+That distinction is explicitly communicated in the UI and report.
+
+---
+
+# 🧪 Hypothesis testing
+
+The current version includes an explicit statistical test.
+
+## Null hypothesis
+
+    H0: treatment conversion = control conversion
+
+## Alternative hypothesis
+
+    H1: treatment conversion != control conversion
+
+## Test
+
+    Two-sided two-proportion z-test
+
+The default significance level is:
+
+    alpha = 0.05
+
+The report exposes:
+
+- z-statistic
+- p-value
+- significance decision
+
+## Decision rule
+
+    p < 0.05
+        ↓
+    Reject H0
+
+    p >= 0.05
+        ↓
+    Do not reject H0
+
+## Correct interpretation
+
+The p-value does **not** mean:
+
+> There is a 95% probability that treatment will work on real customers.
+
+It instead measures the compatibility of the observed simulated difference with the null hypothesis under the assumptions of the selected statistical test.
+
+---
+
+# 📏 Power and minimum detectable effect
+
+The platform also calculates an approximate **80% power MDE**.
+
+Inputs include:
+
+- current control sample size
+- current treatment sample size
+- baseline conversion
+- alpha = 0.05
+- target power = 0.80
+
+The MDE estimates the smallest positive absolute conversion uplift expected to be detectable with the current design under a normal approximation.
+
+This answers:
+
+> How large would the effect need to be for the current sample size to reliably detect it?
+
+The calculation is intentionally described as approximate.
+
+It is a design-sensitivity measure, not a guarantee.
+
+---
+
+# 🧩 Segment analysis
+
+The simulator currently creates segment results for:
+
+- gender
+- customer lifecycle
+
+For each segment the report can show:
+
+- control conversion rate
+- treatment conversion rate
+- uplift
+- number of customers
+
+These results are useful for identifying potentially heterogeneous response patterns.
+
+They should be treated as exploratory unless a future real experiment is explicitly designed and powered for subgroup analysis.
+
+---
+
+# 📄 5. Experiment Report
+
+The final page generates an executive-style report.
+
+## Business setup
+
+The report captures:
+
+- experiment type
+- product/experience
+- category
+- synthetic population size
+- treatment share
+- target segment
+- primary success metric
+- hypothesis
+- control experience
+- proposed treatment
+
+## Results
+
+It includes:
+
+- control conversion
+- treatment conversion
+- absolute uplift
+- relative uplift
+- 95% confidence interval
+- p-value
+- significance decision
+- approximate 80% power MDE
+- control revenue
+- treatment revenue
+- revenue per customer
+
+## Decision recommendation
+
+The application provides three broad interpretations:
+
+### Positive
+
+The simulated interval is above zero.
+
+### Negative
+
+The simulated interval is below zero.
+
+### Inconclusive
+
+The interval crosses zero.
+
+These are recommendations for whether a real pilot should be considered.
+
+They are not claims that the same effect will appear with real customers.
+
+---
+
+# 🧾 Downloadable outputs
+
+The report page provides:
+
+- Markdown executive report
+- JSON experiment result
+
+This makes results easy to archive, inspect, or share.
+
+---
+
+# 🗄️ Neon PostgreSQL data model
+
+Neon is the persistent database.
+
+The schema contains seven principal tables.
+
+    population_runs
+          │
+          ├──────── customers
+          │
+          ├──────── simulator_truth
+          │
+          └──────── customer_edges
+
+    population_runs
+          │
+          └──────── experiments
+                       │
+                       ├──────── experiment_outcomes
+                       │
+                       └──────── segment_results
+
+## population_runs
+
+Stores:
+
+- population ID
+- seed
+- population size
+- timestamp
+- generator configuration
+
+## customers
+
+Stores the company-observable synthetic population.
+
+Key fields:
+
+- population reference
 - age
 - gender
-- city/state
-- approximate location
+- city
+- state
+- latitude
+- longitude
 - device
 - customer type
 - orders
@@ -124,286 +993,555 @@ Observable:
 - sessions
 - cart abandonment
 
-Hidden simulator variables:
+## simulator_truth
+
+Stores hidden simulator state:
+
 - profession
 - income
 - price sensitivity
 - novelty preference
 - risk preference
-- category affinity
+- beauty affinity
+- electronics affinity
+- grocery affinity
 
-Hidden variables create heterogeneous behavior but are never returned by the company-facing population endpoint.
+## customer_edges
 
-## Graph semantics
+Stores:
 
-The graph represents measurable evidence of similarity.
+- source customer
+- target customer
+- similarity weight
+- view
+- JSON explanation/reason
 
-An edge does not prove two customers are truly similar.
+The network supports:
 
-No edge does not mean no similarity.
+    observable
+    truth
 
-It means similarity was not sufficiently observable/measurable under the selected graph construction.
+The normal map uses the observable view.
 
-The simulator-truth network is an internal diagnostic that uses hidden behavioral structure.
+## experiments
 
-Network centrality is descriptive. It is not causal influence.
+Stores:
 
-## Repository layout
+- experiment identity
+- population
+- experiment name
+- category
+- treatment share
+- seed
+- business configuration
 
-    backend/
-      app/
-        main.py
-        simulation.py
-        analytics.py
-        models.py
-        schemas.py
-        db.py
-        config.py
-      Dockerfile
-      requirements.txt
+The experiment business setup is stored in JSON so the simulator can evolve without requiring a large schema migration for every new experiment field.
 
-    frontend/
-      app.py
-      Dockerfile
-      requirements.txt
+## experiment_outcomes
 
-    tests/
-    data/
-      reference/
-        README.md
-        online_retail_real_sample.csv
-    schema.sql
-    docker-compose.yml
+Stores customer-level results:
 
+- experiment
+- customer
+- arm
+- conversion
+- revenue
 
-## Streamlit workflow
+## segment_results
 
-The production frontend is organized as five company-facing pages:
+Stores segment-level aggregates:
 
-1. Generate Population — create up to 30,000 synthetic customers.
-2. India Population Map — plot the synthetic population on a geographic India map and connect the strongest observable-similarity edges.
-3. Company Experiment — choose an experiment type such as a marketing campaign, product promotion, new UI/feature, checkout redesign, pricing, personalization, messaging, retention, or search; then define the product/experience, control, treatment, target segment, success metric, treatment share, and seed.
-4. Treatment vs Control — inspect conversion, uplift, confidence interval, revenue, arm sizes, and segment results.
-5. Experiment Report — produce an executive recommendation and download a Markdown report.
+- segment
+- control rate
+- treatment rate
+- uplift
+- sample size
 
-The map shows synthetic customer locations distributed around major Indian cities. The full 30,000-customer population is stored in Neon, while the frontend draws a bounded number of the strongest edges to keep the browser responsive.
+---
 
-The default India map uses a dark technical theme with neon feature-specific
-network signals and a subtle glow layer. Users can switch to light or street
-maps when geographic context is more important than network visualization.
+# 🔌 FastAPI API
 
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /health | API and database health |
+| POST | /population/generate | Generate and persist a population |
+| GET | /population/{id} | Read a customer sample |
+| GET | /population/{id}/map | Geographic map payload |
+| GET | /population/{id}/diagnostics | Generator consistency diagnostics |
+| GET | /population/{id}/reference-behavior | Real-data behavioral benchmark |
+| POST | /population/{id}/network/rebuild | Build observable customer network |
+| GET | /network | Return strongest selected edges |
+| GET | /graph/analytics | Network analytics |
+| POST | /experiments/simulate | Run synthetic experiment |
+| GET | /experiments/{id} | Retrieve experiment |
+| GET | /experiments | List experiments |
+| GET | /reference-behavior/summary | Benchmark metadata |
 
-### Frontend performance
+FastAPI provides Swagger documentation at:
 
-The Streamlit frontend uses a layered cache strategy:
-- population map data is cached for 30 minutes;
-- network queries are cached for 30 minutes per population, edge budget, and selected feature set;
-- backend health is cached briefly rather than checked on every rerun;
-- HTTP connections are reused across Streamlit reruns;
-- cached population/network data is explicitly invalidated when a new population or rebuilt network is created.
+    /docs
 
-This keeps UI changes such as filters, map styling, and chart tabs from repeatedly downloading the same 30,000-customer payloads.
+---
 
+# 🧱 Repository structure
 
-## Local development
+    synthetic-experimentation-lab/
+    │
+    ├── backend/
+    │   ├── app/
+    │   │   ├── main.py
+    │   │   ├── simulation.py
+    │   │   ├── analytics.py
+    │   │   ├── population_quality.py
+    │   │   ├── reference_behavior.py
+    │   │   ├── models.py
+    │   │   ├── schemas.py
+    │   │   ├── db.py
+    │   │   └── config.py
+    │   ├── Dockerfile
+    │   └── requirements.txt
+    │
+    ├── frontend/
+    │   ├── app.py
+    │   ├── Dockerfile
+    │   └── requirements.txt
+    │
+    ├── data/
+    │   └── reference/
+    │       ├── README.md
+    │       └── online_retail_real_sample.csv
+    │
+    ├── tests/
+    │   └── test_simulation.py
+    │
+    ├── cloudflare_backend/
+    │   ├── README.md
+    │   └── src/
+    │       └── index.js
+    │
+    ├── schema.sql
+    ├── docker-compose.yml
+    ├── wrangler.toml
+    ├── package.json
+    ├── .env.example
+    ├── pytest.ini
+    ├── README.md
+    └── .github/
+        └── workflows/
+            └── ci.yml
 
-Create a .env file from .env.example and provide a PostgreSQL connection string.
+---
+
+# ⚙️ Local development
+
+## Prerequisites
+
+- Python 3.12
+- Docker
+- Git
+- a PostgreSQL connection, preferably Neon
+
+## Environment
+
+Create local settings from:
+
+    .env.example
+
+Example:
+
+    APP_ENV=development
+    DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
+    CORS_ORIGINS=*
+    DB_POOL_SIZE=3
+    DB_MAX_OVERFLOW=2
+    API_BASE_URL=http://localhost:8000
+
+## Docker Compose
+
+Start the local stack:
 
     docker compose up --build
 
 Open:
 
+    Streamlit:
     http://localhost:8501
 
-FastAPI:
+    FastAPI:
+    http://localhost:8000
 
+    Swagger:
     http://localhost:8000/docs
 
-Run tests:
+## Tests
 
     pip install -r backend/requirements.txt pytest
     pytest -q
 
-The backend Docker image is built with backend/ as its Docker context. The same context is configured for Render and CI.
+---
 
-## Neon
+# 🗃️ Neon configuration
 
 Neon is the only persistent application database.
 
-The API accepts both the standard Neon URL:
+The backend accepts:
 
     postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
 
-and the SQLAlchemy psycopg form:
+and:
 
     postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
 
-The backend normalizes the standard Neon URL automatically.
+The backend automatically normalizes the standard PostgreSQL-style Neon URL to the SQLAlchemy psycopg form.
 
-The application creates any missing ORM tables on startup, so a fresh Neon database can be used without a separate migration service. schema.sql is kept as a human-readable SQL reference for the database structure.
+The application creates missing ORM tables automatically on startup, so a fresh Neon database can be used without a separate migration service.
 
-Never commit the Neon connection string to GitHub.
+The repository also contains schema.sql as a human-readable SQL reference.
 
-## Cloudflare backend deployment
+### Security
 
-The production backend can run as a **Cloudflare Container** while the
-Streamlit frontend remains on Streamlit Community Cloud.
+Never commit the Neon connection string or password.
 
-This is the recommended deployment target for the current simulator because
-the backend can exceed the 512 MiB memory limit of the previous runtime during
-30,000-customer generation. Cloudflare Containers support configurable instance
-memory; this repository uses the standard-1 profile (4 GiB).
+The Neon password stays on the backend.
 
-Cloudflare Containers are available on Workers Paid.
+The Streamlit application only knows the API base URL.
 
-The repository includes:
+---
+
+# ☁️ Render deployment
+
+Render is the primary backend deployment target for the current free architecture.
+
+Create a normal Render Web Service.
+
+Recommended configuration:
+
+    Runtime: Docker
+    Dockerfile: ./backend/Dockerfile
+    Docker context: ./backend
+    Health check: /health
+    APP_ENV=production
+    DATABASE_URL=<Neon connection string>
+
+After deployment:
+
+    https://YOUR-SERVICE.onrender.com/health
+
+Expected:
+
+    {"status":"ok","database":"connected"}
+
+Render free services can spin down after inactivity, so cold starts can be slower.
+
+The project separates graph construction from the initial population-generation request to reduce memory and latency pressure.
+
+---
+
+# ☁️ Streamlit Community Cloud deployment
+
+Frontend entrypoint:
+
+    frontend/app.py
+
+Frontend dependencies:
+
+    frontend/requirements.txt
+
+Deployment:
+
+1. Create a Streamlit app from this GitHub repository.
+2. Select branch main.
+3. Select frontend/app.py.
+4. Use Python 3.12.
+5. Add the secret:
+
+    API_BASE_URL = "https://YOUR-SERVICE.onrender.com"
+
+The application supports either Streamlit Secrets or an environment variable for API_BASE_URL.
+
+---
+
+# ☁️ Optional Cloudflare Container deployment
+
+Cloudflare Container configuration is included as an optional backend deployment path.
+
+Files:
 
     wrangler.toml
     cloudflare_backend/src/index.js
     cloudflare_backend/README.md
 
-The container builds the existing backend/Dockerfile, listens on port 8000,
-and passes DATABASE_URL from a Cloudflare Worker Secret into the FastAPI
-container.
+The container runs the existing backend Dockerfile.
 
-Deployment from Cloudflare Workers Builds:
+The configured Cloudflare container profile is larger than the normal Workers runtime and is intended for the Python/NumPy simulator workload.
 
-1. Connect the GitHub repository under Workers & Pages -> Workers Builds.
-2. Use the repository root as the build root.
-3. Deploy with:
+This deployment path requires a Workers Paid plan.
 
-    npx wrangler deploy
+Therefore the recommended free deployment remains:
 
-4. Add the Worker Secret DATABASE_URL with the existing Neon PostgreSQL URL.
-5. Optionally add CORS_ORIGINS with a comma-separated list of allowed origins,
-   or leave it as *.
-6. After the container provisions, verify /health.
-7. Set the Streamlit Community Cloud secret API_BASE_URL to the resulting
-   workers.dev URL.
+    Streamlit Community Cloud
+              ↓
+    Render
+              ↓
+    Neon PostgreSQL
 
-The first container deployment can take several minutes to provision.
+---
 
-## Deploy the backend to Render
+# 🔁 GitHub Actions CI
 
-Create the backend as a normal Render Web Service. Do not use a Blueprint for this deployment.
-
-The Render service is configured as:
-
-- Runtime: Docker
-- Dockerfile: ./backend/Dockerfile
-- Docker context: ./backend
-- Health check: /health
-- Plan: free
-- Environment: APP_ENV=production
-- Database secret: DATABASE_URL
-
-### Render deployment
-
-1. Open the Render Dashboard.
-2. Create a normal Web Service from this GitHub repository.
-3. Select the main branch and Docker runtime.
-4. Set the backend root directory / Docker context as documented above, then add DATABASE_URL.
-5. Deploy the service.
-6. Verify:
-
-    https://YOUR-SERVICE.onrender.com/health
-
-A successful response is:
-
-    {"status":"ok","database":"connected"}
-
-The service listens on Render's PORT environment variable when present, and falls back to port 8000 for local Docker runs.
-
-Render free web services can spin down after inactivity, so the first request after idle time may take longer.
-
-## Deploy the frontend to Streamlit Community Cloud
-
-Use:
-
-    frontend/app.py
-
-Keep the frontend/requirements.txt file next to the Streamlit entrypoint.
-
-In Streamlit Community Cloud:
-
-1. Create a new app from this repository.
-2. Choose branch main.
-3. Set the entrypoint to frontend/app.py.
-4. Select Python 3.12 in Advanced settings.
-5. In Secrets, add:
-
-    API_BASE_URL = "https://YOUR-SERVICE.onrender.com"
-
-The frontend checks both the API_BASE_URL environment variable and Streamlit secrets, so the same code works locally and in Community Cloud.
-
-The Streamlit app never receives the Neon password.
-
-The Streamlit UI intentionally does not expose the Render service URL or database
-connection details; those remain deployment configuration rather than product UI.
-
-## Environment variables
-
-Backend:
-
-    APP_ENV=production
-    DATABASE_URL=postgresql://...
-    CORS_ORIGINS=*
-    DB_POOL_SIZE=3
-    DB_MAX_OVERFLOW=2
-
-Frontend:
-
-    API_BASE_URL=https://YOUR-SERVICE.onrender.com
-
-.env.example contains the local development version.
-
-## CI
-
-GitHub Actions checks:
+The repository checks:
 
 1. Python compilation
 2. Pytest
 3. Backend Docker build
 4. Frontend Docker build
 
-The Docker build contexts in CI match the contexts used by the deployment configuration.
+The CI build contexts match the deployment build contexts.
 
-## Statistical methodology
+This provides a basic release gate before changes reach hosting.
 
-The experiment report includes:
+---
 
-- **Absolute and relative uplift** between treatment and control.
-- **95% confidence interval** for the difference in conversion proportions using a normal approximation.
-- **Two-sided two-proportion z-test** with H0: treatment conversion = control conversion and H1: treatment conversion != control conversion.
-- **p-value and alpha=0.05 decision** for the simulated conversion-rate difference.
-- **Approximate 80% power MDE** showing the smallest positive conversion-rate uplift expected to be detectable with the current arm sizes under a normal approximation.
+# 🧪 Test coverage
 
-The p-value and confidence interval describe randomization/sampling variability **within the synthetic run**. They do not capture uncertainty from simulator assumptions.
+The test suite covers important architectural boundaries.
 
-The MDE is a design-sensitivity measure, not a guarantee that a real experiment will detect an effect of that size.
+Examples include:
 
-A positive or statistically significant synthetic uplift is a reason to consider a controlled real-world pilot, not evidence that the real experiment will achieve the same effect.
+### Reproducibility
 
-## Current deployment boundary
+The same seed produces the same population values and structure.
 
-The deployed system has a deliberately simple boundary:
+### Hidden boundary
 
-    Streamlit
-       |
-       | HTTPS + JSON
-       v
+Hidden income is absent from the company-facing customer object but exists in simulator truth.
+
+### Statistical analysis
+
+The suite tests:
+
+- confidence interval generation
+- two-proportion z-test
+- p-value output
+- statistical significance
+- approximate MDE/power analysis
+
+### Network
+
+The suite verifies cross-city feature-based similarity.
+
+### Correlated population structure
+
+The suite checks relationships such as:
+
+- income/AOV
+- orders/sessions
+
+### Diagnostics
+
+The suite checks that population diagnostics return a valid consistency score.
+
+### Real-data benchmark
+
+The suite checks:
+
+- reference dataset loading
+- source metadata
+- behavioral alignment outputs
+- metric score ranges
+
+### Experiment mechanisms
+
+Multiple experiment types are tested to verify that the simulator produces treatment/control outcomes.
+
+---
+
+# 🧠 Statistical interpretation and limitations
+
+The platform deliberately distinguishes three different sources of uncertainty.
+
+## 1. Sampling/randomization variability
+
+Captured approximately by:
+
+- confidence interval
+- p-value
+
+## 2. Experiment design sensitivity
+
+Summarized approximately by:
+
+- power
+- MDE
+
+## 3. Simulator assumption uncertainty
+
+Not captured by the current p-value or confidence interval.
+
+This is the most important limitation.
+
+A highly significant synthetic result can still be wrong for the real world if the simulator mechanisms are misspecified.
+
+Therefore:
+
+    Synthetic result
+          ↓
+    decision signal
+          ↓
+    real controlled pilot
+          ↓
+    real-world evidence
+
+is the intended workflow.
+
+---
+
+# 🔒 Security/data boundaries
+
+The frontend does not receive database credentials.
+
+Only FastAPI owns DATABASE_URL.
+
+The frontend communicates through the API.
+
+Do not commit:
+
+    DATABASE_URL
+    Neon passwords
+    private credentials
+    production secrets
+
+The environment template is provided through:
+
+    .env.example
+
+---
+
+# 📌 Current deployment/design status
+
+The current implementation includes:
+
+- up to 30,000 synthetic customers
+- correlated latent-factor population generation
+- hidden simulator truth
+- observable customer boundary
+- Indian geographic distribution
+- interactive India map
+- cyber-intelligence visual theme
+- cross-city observable similarity network
+- on-demand network construction
+- population structure diagnostics
+- real-data behavioral benchmark
+- generalized experiment design
+- randomized control/treatment assignment
+- heterogeneous simulation mechanisms
+- conversion uplift
+- revenue analysis
+- 95% confidence intervals
+- two-proportion hypothesis testing
+- p-values
+- alpha-based significance decisions
+- approximate 80% power MDE
+- segment analysis
+- executive decision report
+- Markdown report download
+- JSON result download
+- Neon PostgreSQL persistence
+- FastAPI backend
+- Streamlit frontend
+- Docker deployment
+- Render deployment path
+- Streamlit Community Cloud deployment path
+- optional Cloudflare Container packaging
+- GitHub Actions CI
+
+---
+
+# 🏁 Portfolio positioning
+
+This project demonstrates a combination of:
+
+    Synthetic data generation
+           +
+    Probabilistic modeling
+           +
+    Behavioral simulation
+           +
+    Experiment design
+           +
+    Randomization
+           +
+    Statistical inference
+           +
+    Power analysis
+           +
+    Graph analytics
+           +
+    Geospatial visualization
+           +
+    Real-data benchmarking
+           +
+    PostgreSQL data modeling
+           +
     FastAPI
-       |
-       | SQL over TLS
-       v
-    Neon PostgreSQL
+           +
+    Docker
+           +
+    CI/CD
+           +
+    Cloud deployment
 
-Population generation is intentionally separated from graph construction: the
-30,000-customer population is persisted first, and the observable similarity
-network is built on demand when the map network layer is activated. This keeps
-the initial generation path fast and reduces peak memory usage on the small
-Render instance.
+The strongest portfolio description is:
 
-Only the FastAPI service holds the database connection string.
+> **A synthetic experimentation platform that lets companies test experiment mechanisms, estimate simulated uplift, quantify statistical uncertainty, and identify potentially responsive segments before spending real customer traffic on a pilot.**
 
-This keeps the Streamlit layer stateless and prevents database credentials from reaching the browser or Streamlit users.
+---
+
+# 🔗 Repository
+
+GitHub:
+
+    https://github.com/Harshithpatali/synthetic-experimentation-lab
+
+---
+
+# 📚 Data attribution
+
+The real-data benchmark is derived from:
+
+**Chen, D. (2012). Online Retail II [Dataset]. UCI Machine Learning Repository.**
+
+DOI:
+
+    https://doi.org/10.24432/C5CG6D
+
+License:
+
+    CC BY 4.0
+
+See:
+
+    data/reference/README.md
+
+for the bundled sample provenance and scope.
+
+---
+
+# ⚠️ Final interpretation
+
+Synthetic Experimentation Lab follows one principle:
+
+> **Use synthetic experimentation to decide what deserves a real experiment.**
+
+The platform can help reveal:
+
+- whether an experiment mechanism is internally plausible
+- which segments appear sensitive in the simulator
+- how large a simulated uplift could be
+- how uncertain that simulated estimate is
+- whether the current sample size can detect a meaningful effect
+- whether the idea appears worth piloting
+
+It cannot prove that real customers will behave identically.
+
+A synthetic result is therefore a **pre-experiment decision signal**, not a substitute for controlled real-world experimentation.

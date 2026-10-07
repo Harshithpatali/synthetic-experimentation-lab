@@ -113,6 +113,19 @@ Network centrality is descriptive. It is not causal influence.
     render.yaml
     docker-compose.yml
 
+
+## Streamlit workflow
+
+The production frontend is organized as five company-facing pages:
+
+1. Generate Population — create up to 30,000 synthetic customers.
+2. India Population Map — plot the synthetic population on a geographic India map and connect the strongest observable-similarity edges.
+3. Company Experiment — define the hypothesis, treatment/offer, target segment, success metric, category, treatment share, and seed.
+4. Treatment vs Control — inspect conversion, uplift, confidence interval, revenue, arm sizes, and segment results.
+5. Experiment Report — produce an executive recommendation and download a Markdown report.
+
+The map shows synthetic customer locations distributed around major Indian cities. The full 30,000-customer population is stored in Neon, while the frontend draws a bounded number of the strongest edges to keep the browser responsive.
+
 ## Local development
 
 Create a .env file from .env.example and provide a PostgreSQL connection string.

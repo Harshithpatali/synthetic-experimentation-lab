@@ -126,6 +126,18 @@ The production frontend is organized as five company-facing pages:
 
 The map shows synthetic customer locations distributed around major Indian cities. The full 30,000-customer population is stored in Neon, while the frontend draws a bounded number of the strongest edges to keep the browser responsive.
 
+### Frontend performance
+
+The Streamlit frontend uses a layered cache strategy:
+- population map data is cached for 30 minutes;
+- network queries are cached for 30 minutes per population, edge budget, and selected feature set;
+- backend health is cached briefly rather than checked on every rerun;
+- HTTP connections are reused across Streamlit reruns;
+- cached population/network data is explicitly invalidated when a new population or rebuilt network is created.
+
+This keeps UI changes such as filters, map styling, and chart tabs from repeatedly downloading the same 30,000-customer payloads.
+
+
 ## Local development
 
 Create a .env file from .env.example and provide a PostgreSQL connection string.

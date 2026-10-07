@@ -76,6 +76,10 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
             config={"hidden_variables_internal": True},
         )
     )
+    # Flush the parent row before bulk-inserting children. SQLAlchemy delays
+    # the INSERT for db.add() until flush/commit; the child tables have a
+    # foreign key to population_runs, so the parent must exist first.
+    db.flush()
 
     # Core/PostgreSQL executemany inserts are much faster than creating
     # thousands of SQLAlchemy ORM objects one at a time.

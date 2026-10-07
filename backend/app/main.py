@@ -79,13 +79,15 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
             config={
                 "hidden_variables_internal": True,
                 "generator_version": "latent-correlated-v2",
+                "network_mode": "on-demand",
             },
         )
     )
     db.flush()
 
-    # Bound executemany payloads. The previous implementation built complete
-    # 30k-row dictionaries twice, creating unnecessary Python heap pressure.
+    # Keep database writes bounded. The synthetic population is generated in
+    # NumPy arrays, then inserted in small batches to avoid a second large
+    # Python heap spike.
     def insert_in_batches(model, rows, batch_size=2000):
         batch = []
         for row in rows:
@@ -103,45 +105,14 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
     insert_in_batches(Customer, population.customers)
     insert_in_batches(SimulatorTruth, population.truth)
 
-    # Observable graph construction does not need hidden simulator truth.
-    # Release the truth list before the graph phase.
-    customers = population.customers
-    del population
-    gc.collect()
-
-    # Stream graph rows directly into PostgreSQL in small batches instead of
-    # retaining hundreds of thousands of edge dictionaries in RAM.
-    edge_batch = []
-    edges_inserted = 0
-
-    for edge in iter_similarity_edges(
-        customers,
-        [],
-        "observable",
-        max_edges_per_node=1,
-    ):
-        edge["population_id"] = population_id
-        edge_batch.append(edge)
-
-        if len(edge_batch) >= 2000:
-            db.execute(insert(CustomerEdge), edge_batch)
-            edges_inserted += len(edge_batch)
-            edge_batch.clear()
-
-    if edge_batch:
-        db.execute(insert(CustomerEdge), edge_batch)
-        edges_inserted += len(edge_batch)
-
-    del customers
-    gc.collect()
-
     db.commit()
 
     return {
         "population_id": population_id,
         "size": req.size,
         "seed": req.seed,
-        "network_edges": edges_inserted,
+        "network_edges": 0,
+        "network_status": "on-demand",
     }
 
 

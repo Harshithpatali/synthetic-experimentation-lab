@@ -48,3 +48,12 @@ synthetic customers are statistically representative of Indian consumers.
 
 If this reference data is redistributed or reused, retain the UCI attribution
 and CC BY 4.0 terms above.
+
+
+## Sample provenance
+
+The bundled 1,950-row fixture was copied from the real-data fixture in the
+public GitHub repository Dimitres-Kisimov/retail-analytics-real. That
+repository documents the fixture as real Online Retail II data and cites the
+same UCI source and CC BY 4.0 license. The fixture is used here only to keep
+the benchmark small enough for normal source control and deployment.

@@ -4,59 +4,29 @@
 
 A Python data-science platform that creates a synthetic customer population, randomizes customers into control/treatment, simulates heterogeneous outcomes, and lets a company inspect uplift, uncertainty, segments, and observable similarity structure before running a real-world pilot.
 
-## Final architecture
+## Production architecture
 
-    Streamlit Cloud
-          |
-          | HTTPS
-          v
-    Cloudflare Container
-          |
-          v
-    FastAPI + Python
-          |
-          v
-    Neon PostgreSQL
+    Streamlit Community Cloud
+             |
+             | HTTPS
+             v
+    Render Web Service
+      Docker + FastAPI
+             |
+             | SSL
+             v
+       Neon PostgreSQL
 
 - Frontend: Streamlit
 - Backend: FastAPI + Python
-- Database: Neon PostgreSQL
 - Backend packaging: Docker
-- Production backend: Cloudflare Containers
-- Production frontend: Streamlit Community Cloud
+- Backend hosting: Render
+- Database: Neon PostgreSQL
+- Frontend hosting: Streamlit Community Cloud
 - No React
+- No Cloudflare runtime required
 - No R2
 - No D1
-
-## Repository
-
-    backend/
-      app/
-        main.py
-        simulation.py
-        analytics.py
-        models.py
-        schemas.py
-        db.py
-        config.py
-      Dockerfile
-      requirements.txt
-
-    frontend/
-      app.py
-      Dockerfile
-      requirements.txt
-
-    src/
-      index.js              # Cloudflare routing only
-
-    schema.sql
-    docker-compose.yml
-    wrangler.toml
-    package.json
-    tests/
-
-The actual application backend is Python/FastAPI. The small JavaScript file only connects Cloudflare's container runtime to the FastAPI container.
 
 ## Product flow
 
@@ -103,7 +73,7 @@ Hidden simulator variables:
 - risk preference
 - category affinity
 
-Hidden variables create heterogeneous behavior but are never returned by the company-facing population API.
+Hidden variables create heterogeneous behavior but are never returned by the company-facing population endpoint.
 
 ## Graph semantics
 
@@ -117,9 +87,35 @@ It means similarity was not sufficiently observable/measurable under the selecte
 
 The simulator-truth network is an internal diagnostic that uses hidden behavioral structure.
 
+Network centrality is descriptive. It is not causal influence.
+
+## Repository layout
+
+    backend/
+      app/
+        main.py
+        simulation.py
+        analytics.py
+        models.py
+        schemas.py
+        db.py
+        config.py
+      Dockerfile
+      requirements.txt
+
+    frontend/
+      app.py
+      Dockerfile
+      requirements.txt
+
+    tests/
+    schema.sql
+    render.yaml
+    docker-compose.yml
+
 ## Local development
 
-Create a .env file from .env.example and put your Neon connection string in DATABASE_URL.
+Create a .env file from .env.example and provide a PostgreSQL connection string.
 
     docker compose up --build
 
@@ -136,85 +132,127 @@ Run tests:
     pip install -r backend/requirements.txt pytest
     pytest -q
 
+The backend Docker image is built with backend/ as its Docker context. The same context is configured for Render and CI.
+
 ## Neon
 
 Neon is the only persistent application database.
 
-Run schema.sql once against your Neon PostgreSQL database.
+The API accepts both the standard Neon URL:
 
-Then use:
+    postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
 
-    DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
+and the SQLAlchemy psycopg form:
 
-Do not commit this value.
+    postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
 
-## Manual Cloudflare deployment
+The backend normalizes the standard Neon URL automatically.
 
-The production backend is the Dockerized FastAPI application.
+The application creates any missing ORM tables on startup, so a fresh Neon database can be used without a separate migration service. schema.sql is kept as a human-readable SQL reference for the database structure.
 
-Prerequisites:
-1. Cloudflare account with Containers enabled.
-2. Docker installed and running.
-3. Node.js and npm installed.
-4. Neon PostgreSQL connection string.
+Never commit the Neon connection string to GitHub.
 
-Install the Cloudflare deployment tooling:
+## Deploy the backend to Render
 
-    npm install
-    npx wrangler login
+The repository includes render.yaml so the backend can be created as a Render Blueprint.
 
-Store the Neon connection string as a Cloudflare Worker secret:
+The Render service is configured as:
 
-    npx wrangler secret put DATABASE_URL
+- Runtime: Docker
+- Dockerfile: ./backend/Dockerfile
+- Docker context: ./backend
+- Health check: /health
+- Plan: free
+- Environment: APP_ENV=production
+- Database secret: DATABASE_URL
 
-Deploy manually:
+### Render deployment
 
-    npx wrangler deploy
+1. Open the Render Dashboard.
+2. Create a new Blueprint from this GitHub repository, or create a Web Service manually.
+3. If using the Blueprint, Render will ask for the DATABASE_URL secret because it is marked sync: false.
+4. Deploy the service.
+5. Verify:
 
-Cloudflare builds backend/Dockerfile, starts FastAPI on port 8000, and passes the DATABASE_URL Worker secret into the container.
+    https://YOUR-SERVICE.onrender.com/health
 
-After deployment, verify:
+A successful response is:
 
-    https://YOUR-WORKER.workers.dev/health
+    {"status":"ok","database":"connected"}
 
-FastAPI docs:
+The service listens on Render's PORT environment variable when present, and falls back to port 8000 for local Docker runs.
 
-    https://YOUR-WORKER.workers.dev/docs
+Render free web services can spin down after inactivity, so the first request after idle time may take longer.
 
-Cloudflare's current Containers documentation recommends the Durable Object Container API for new applications and supports passing environment variables into the container at startup. The repository uses that pattern for the Neon connection string.
+## Deploy the frontend to Streamlit Community Cloud
 
-## Streamlit Cloud deployment
-
-Deploy the frontend application from:
+Use:
 
     frontend/app.py
 
-Set this Streamlit environment variable:
+Keep the frontend/requirements.txt file next to the Streamlit entrypoint.
 
-    API_BASE_URL=https://YOUR-WORKER.workers.dev
+In Streamlit Community Cloud:
 
-Streamlit only talks to FastAPI over HTTPS.
+1. Create a new app from this repository.
+2. Choose branch main.
+3. Set the entrypoint to frontend/app.py.
+4. Select Python 3.12 in Advanced settings.
+5. In Secrets, add:
 
-Streamlit does not receive the Neon password.
+    API_BASE_URL = "https://YOUR-SERVICE.onrender.com"
 
-## Secrets
+The frontend checks both the API_BASE_URL environment variable and Streamlit secrets, so the same code works locally and in Community Cloud.
 
-Cloudflare:
+The Streamlit app never receives the Neon password.
 
-    DATABASE_URL
+## Environment variables
 
-Streamlit Cloud:
+Backend:
 
-    API_BASE_URL
+    APP_ENV=production
+    DATABASE_URL=postgresql://...
+    CORS_ORIGINS=*
+    DB_POOL_SIZE=3
+    DB_MAX_OVERFLOW=2
 
-GitHub Actions does not need Cloudflare credentials because this project is intended to be deployed manually to Cloudflare.
+Frontend:
 
-If you later automate deployment, add:
-- CLOUDFLARE_API_TOKEN
-- CLOUDFLARE_ACCOUNT_ID
+    API_BASE_URL=https://YOUR-SERVICE.onrender.com
+
+.env.example contains the local development version.
+
+## CI
+
+GitHub Actions checks:
+
+1. Python compilation
+2. Pytest
+3. Backend Docker build
+4. Frontend Docker build
+
+The Docker build contexts in CI match the contexts used by the deployment configuration.
 
 ## Statistical warning
 
 The 95% confidence interval describes randomization/sampling variability in the synthetic run. It does not capture uncertainty from simulator assumptions.
 
 A positive simulated uplift is a reason to consider a real-world pilot, not evidence that the real experiment will achieve the same effect.
+
+## Current deployment boundary
+
+The deployed system has a deliberately simple boundary:
+
+    Streamlit
+       |
+       | HTTPS + JSON
+       v
+    FastAPI
+       |
+       | SQL over TLS
+       v
+    Neon PostgreSQL
+
+Only the FastAPI service holds the database connection string.
+
+This keeps the Streamlit layer stateless and prevents database credentials from reaching the browser or Streamlit users.

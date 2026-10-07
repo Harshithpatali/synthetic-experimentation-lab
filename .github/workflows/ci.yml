@@ -14,8 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
-      - run: python -m compileall app streamlit_app.py
+      - run: pip install -r backend/requirements.txt pytest
+      - run: python -m compileall backend/app frontend/app.py
       - run: pytest -q
-      - run: docker build -f Dockerfile.api -t synthetic-lab-api .
-      - run: docker build -f Dockerfile.streamlit -t synthetic-lab-ui .
+      - run: docker build -f backend/Dockerfile -t synthetic-lab-api .
+      - run: docker build -f frontend/Dockerfile -t synthetic-lab-ui .

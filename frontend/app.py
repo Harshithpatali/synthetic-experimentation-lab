@@ -870,6 +870,7 @@ with st.sidebar:
             "experiment_meta",
             "population_diagnostics",
             "reference_behavior",
+            "network_rebuilt_population",
         ]:
             st.session_state.pop(key, None)
         load_population_map.clear()
@@ -1307,27 +1308,30 @@ elif page == PAGE_NAMES[1]:
             show_edges
             and selected_edge_features
             and not network_payload.get("edges")
+            and st.session_state.get("network_rebuilt_population") != population_id
         ):
-            st.warning(
-                "This population does not yet have the new global feature-level "
-                "network. Rebuild it once to add cross-city edges and colour-coded "
-                "feature relationships."
-            )
-            if st.button(
-                "🔄 Rebuild global cross-city similarity network",
-                type="primary",
-                use_container_width=True,
-            ):
-                with st.spinner("Rebuilding the global feature network…"):
-                    rebuild = post(
-                        f"/population/{population_id}/network/rebuild",
-                        {},
-                    )
-                load_network.clear()
-                st.success(
-                    f"Rebuilt {rebuild.get('edges_rebuilt', 0):,} feature-level edges."
+            # New populations intentionally skip graph construction during
+            # generation. Build the graph automatically the first time the
+            # user opens the network layer, then reload the edges.
+            with st.spinner("Activating customer intelligence network…"):
+                rebuild = post(
+                    f"/population/{population_id}/network/rebuild",
+                    {},
                 )
-                st.rerun()
+            st.session_state["network_rebuilt_population"] = population_id
+            load_network.clear()
+            st.rerun()
+
+        if (
+            show_edges
+            and selected_edge_features
+            and not network_payload.get("edges")
+            and st.session_state.get("network_rebuilt_population") == population_id
+        ):
+            st.info(
+                "No observable similarity edges are available for the current "
+                "feature selection."
+            )
 
         visible_ids = set(visible_points["id"])
         visible_edges = [

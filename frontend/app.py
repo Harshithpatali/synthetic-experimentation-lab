@@ -2020,7 +2020,7 @@ elif page == PAGE_NAMES[3]:
         )
 
     # ---- Segments -----------------------------------------------------------
-    with tabs[2]:
+    with tabs[3]:
         segment_frame = pd.DataFrame(result.get("segments", []))
 
         if segment_frame.empty:
@@ -2053,7 +2053,7 @@ elif page == PAGE_NAMES[3]:
             )
 
     # ---- Raw data -----------------------------------------------------------
-    with tabs[3]:
+    with tabs[4]:
         st.json(result, expanded=False)
 
 

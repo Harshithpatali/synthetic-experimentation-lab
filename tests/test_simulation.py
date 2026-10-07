@@ -1,8 +1,15 @@
 import math
 
+import numpy as np
+
 from backend.app.analytics import difference_in_proportions
 from backend.app.config import normalize_database_url
-from backend.app.simulation import build_similarity_edges, generate_population
+from backend.app.population_quality import population_diagnostics
+from backend.app.simulation import (
+    build_similarity_edges,
+    generate_population,
+    simulate_outcomes,
+)
 
 
 def test_population_reproducible():
@@ -89,3 +96,79 @@ def test_global_feature_network_can_connect_across_cities():
         }
         for edge in edges
     )
+
+def test_correlated_population_has_expected_structure():
+    population = generate_population(2000, 123)
+
+    income_by_id = {truth["customer_id"]: truth["income"] for truth in population.truth}
+    incomes = [income_by_id[item["id"]] for item in population.customers]
+    aovs = [item["aov"] for item in population.customers]
+    orders = [item["orders"] for item in population.customers]
+    sessions = [item["sessions_30d"] for item in population.customers]
+
+    corr_income_aov = float(np.corrcoef(incomes, aovs)[0, 1])
+    corr_orders_sessions = float(np.corrcoef(orders, sessions)[0, 1])
+
+    assert corr_income_aov > 0.05
+    assert corr_orders_sessions > 0.10
+
+
+def test_population_diagnostics():
+    population = generate_population(1000, 321)
+    truth_by_customer = {truth["customer_id"]: truth for truth in population.truth}
+
+    rows = [
+        {**customer, "income": truth_by_customer[customer["id"]]["income"]}
+        for customer in population.customers
+    ]
+
+    diagnostics = population_diagnostics(rows)
+
+    assert diagnostics["sample_size"] == 1000
+    assert 0 <= diagnostics["score"] <= 100
+    assert diagnostics["checks"]
+
+
+def test_multiple_experiment_types_produce_outcomes():
+    population = generate_population(150, 55)
+    truth = {
+        item["customer_id"]: {
+            "price_sensitivity": item["price_sensitivity"],
+            "novelty_preference": item["novelty_preference"],
+            "beauty_affinity": item["beauty_affinity"],
+            "electronics_affinity": item["electronics_affinity"],
+            "grocery_affinity": item["grocery_affinity"],
+        }
+        for item in population.truth
+    }
+
+    customers = [
+        {
+            "id": item["id"],
+            "age": item["age"],
+            "gender": item["gender"],
+            "orders": item["orders"],
+            "aov": item["aov"],
+            "recency_days": item["recency_days"],
+            "sessions_30d": item["sessions_30d"],
+            "customer_type": item["customer_type"],
+        }
+        for item in population.customers
+    ]
+
+    for experiment_type in (
+        "Marketing campaign",
+        "New UI / feature",
+        "Checkout redesign",
+        "Pricing / discount",
+    ):
+        outcomes, _ = simulate_outcomes(
+            customers,
+            truth,
+            "General",
+            experiment_type,
+            0.5,
+            77,
+        )
+        assert len(outcomes) == 150
+        assert {row["arm"] for row in outcomes} == {"control", "treatment"}

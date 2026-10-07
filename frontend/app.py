@@ -348,6 +348,11 @@ def load_population_diagnostics(population_id: str):
     return get(f"/population/{population_id}/diagnostics")
 
 
+@st.cache_data(ttl=1800, max_entries=8, show_spinner=False)
+def load_reference_behavior(population_id: str):
+    return get(f"/population/{population_id}/reference-behavior")
+
+
 @st.cache_data(ttl=1800, max_entries=32, show_spinner=False)
 def load_network(population_id: str, limit: int, features: tuple[str, ...]):
     return get(
@@ -788,10 +793,13 @@ with st.sidebar:
             "population_seed",
             "experiment_result",
             "experiment_meta",
+            "population_diagnostics",
+            "reference_behavior",
         ]:
             st.session_state.pop(key, None)
         load_population_map.clear()
         load_population_diagnostics.clear()
+        load_reference_behavior.clear()
         load_network.clear()
         load_health.clear()
         st.rerun()
@@ -873,6 +881,7 @@ if page == PAGE_NAMES[0]:
 
             load_population_map.clear()
             load_population_diagnostics.clear()
+            load_reference_behavior.clear()
             load_network.clear()
 
             st.toast("Population generated successfully", icon="✅")
@@ -972,6 +981,96 @@ if page == PAGE_NAMES[0]:
                 )
 
             st.caption(diagnostics.get("caveat", ""))
+
+
+    st.markdown("### 📏 Compare with real customer behaviour")
+    st.caption(
+        "This is a separate benchmark from the generator-consistency score. "
+        "It compares orders, AOV shape, recency and lifecycle composition with "
+        "the bundled real UCI Online Retail II transaction sample."
+    )
+
+    if st.button(
+        "Compare synthetic population with real transactions",
+        key="run_reference_behavior",
+    ):
+        try:
+            with st.spinner("Comparing the synthetic population with real transaction behaviour…"):
+                benchmark = load_reference_behavior(
+                    st.session_state["population_id"]
+                )
+            st.session_state["reference_behavior"] = benchmark
+        except Exception as exc:
+            st.error(str(exc))
+
+    benchmark = st.session_state.get("reference_behavior")
+    if benchmark:
+        score = float(benchmark.get("score", 0.0))
+        tone = "✅" if score >= 80 else "⚠️" if score >= 60 else "❗"
+        kpi_row(
+            [
+                {
+                    "label": "Behavior alignment",
+                    "value": f"{score:.1f}/100",
+                    "sub": benchmark.get("classification", "—"),
+                },
+                {
+                    "label": "Real reference",
+                    "value": f"{benchmark.get('reference_customers', 0):,}",
+                    "sub": "Customer profiles from real transactions",
+                },
+                {
+                    "label": "Synthetic",
+                    "value": f"{benchmark.get('population_size', 0):,}",
+                    "sub": "Customers being benchmarked",
+                },
+            ]
+        )
+
+        metric_rows = []
+        for key, label in (
+            ("orders", "Orders"),
+            ("aov", "AOV shape"),
+            ("recency", "Recency"),
+        ):
+            metric = benchmark.get("metrics", {}).get(key, {})
+            metric_rows.append(
+                {
+                    "Metric": label,
+                    "Alignment": f"{float(metric.get('score', 0.0)):.1f}/100",
+                    "KS distance": metric.get("ks_distance", "—"),
+                    "Real median": metric.get("real_median", "—"),
+                    "Synthetic median": metric.get("synthetic_median", "—"),
+                    "Comparison": metric.get("comparison", "—"),
+                }
+            )
+
+        st.dataframe(
+            pd.DataFrame(metric_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        lifecycle = benchmark.get("lifecycle", {})
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            st.metric(
+                "Lifecycle alignment",
+                f"{float(lifecycle.get('score', 0.0)):.1f}/100",
+            )
+        with lc2:
+            st.caption(
+                "AOV is scored by relative distribution shape because the real "
+                "reference is priced in GBP while the synthetic app uses INR."
+            )
+
+        source = benchmark.get("reference_source", {})
+        st.caption(
+            f"Reference: {source.get('name', 'Real dataset')} · "
+            f"{source.get('license', 'licensed data')} · "
+            f"{source.get('sample_rows', '—'):,} bundled real rows"
+        )
+        st.caption(benchmark.get("caveat", ""))
 
     with st.expander("ℹ️ How the simulation pipeline works"):
         st.markdown(

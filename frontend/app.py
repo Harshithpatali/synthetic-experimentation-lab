@@ -38,6 +38,55 @@ PALETTE = [
     "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9",
 ]
 
+EXPERIMENT_TYPES = [
+    "Marketing campaign",
+    "Product promotion",
+    "New UI / feature",
+    "Checkout redesign",
+    "Pricing / discount",
+    "Recommendation / personalization",
+    "Messaging / copy",
+    "Retention / loyalty",
+    "Search / discovery",
+    "Other",
+]
+
+EXPERIMENT_TYPE_HELP = {
+    "Marketing campaign": "Test a campaign, promotion, audience strategy, or channel message.",
+    "Product promotion": "Test how promoting a product, collection, bundle, or launch changes behaviour.",
+    "New UI / feature": "Test a new interface, feature, navigation, layout, or interaction.",
+    "Checkout redesign": "Test a redesigned cart or checkout flow to reduce abandonment.",
+    "Pricing / discount": "Test price, discount, bundle, or incentive changes.",
+    "Recommendation / personalization": "Test personalized products, recommendations, or ranking.",
+    "Messaging / copy": "Test headlines, copy, notifications, email, or in-app messaging.",
+    "Retention / loyalty": "Test loyalty benefits, win-back journeys, or retention interventions.",
+    "Search / discovery": "Test search, filters, sorting, discovery, or browse experiences.",
+    "Other": "Describe any other business change you want to simulate.",
+}
+
+PRODUCT_CATEGORIES = [
+    "General",
+    "Beauty",
+    "Electronics",
+    "Grocery",
+    "Fashion",
+    "Home",
+    "Sports",
+    "Travel",
+    "Finance",
+    "SaaS",
+]
+
+SUCCESS_METRICS = [
+    "Conversion rate",
+    "Revenue per customer",
+    "Average order value",
+    "Checkout completion",
+    "Click-through rate",
+    "Add-to-cart rate",
+    "Retention rate",
+]
+
 # -----------------------------------------------------------------------------
 # Styling
 # -----------------------------------------------------------------------------
@@ -1197,7 +1246,7 @@ elif page == PAGE_NAMES[2]:
 
     section(
         "Design the company experiment",
-        "Define the business experiment you want to test before exposing real customers.",
+        "Test a campaign, product change, new UI, checkout flow, pricing idea, or other customer intervention before exposing real customers.",
     )
 
     kpi_row(
@@ -1210,31 +1259,102 @@ elif page == PAGE_NAMES[2]:
     )
 
     st.write("")
+
+    st.markdown(
+        '<div class="section-title">1. Choose what the company wants to test</div>'
+        '<div class="section-sub">The simulator changes its response mechanism based on the experiment type.</div>',
+        unsafe_allow_html=True,
+    )
+
+    experiment_type = st.selectbox(
+        "Experiment type",
+        EXPERIMENT_TYPES,
+        index=0,
+        help="Choose the business intervention, not the product category.",
+    )
+    st.info(EXPERIMENT_TYPE_HELP[experiment_type])
+
+    st.write("")
+
+    st.markdown(
+        '<div class="section-title">2. Define the business context</div>'
+        '<div class="section-sub">Name the initiative and identify the product, service, or experience being changed.</div>',
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns([1.2, 1.0, 0.9], gap="large")
+
+    with c1:
+        experiment_name = st.text_input(
+            "Experiment / campaign name",
+            "Homepage campaign for new product launch",
+        )
+    with c2:
+        product = st.text_input(
+            "Product / service / experience",
+            "New product collection",
+        )
+    with c3:
+        category = st.selectbox(
+            "Product category",
+            PRODUCT_CATEGORIES,
+            index=0,
+        )
+
+    hypothesis = st.text_area(
+        "Business hypothesis",
+        "Changing the customer experience will increase conversion or revenue.",
+        height=95,
+        help="State the measurable behaviour you expect to change.",
+    )
+
+    st.markdown(
+        '<div class="section-title">3. Define control and treatment</div>'
+        '<div class="section-sub">The control is what customers see today; the treatment is the proposed change.</div>',
+        unsafe_allow_html=True,
+    )
+
     left, right = st.columns(2, gap="large")
 
     with left:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        experiment_name = st.text_input("Experiment name", "Beauty offer pilot")
-        hypothesis = st.text_area(
-            "Business hypothesis",
-            "A targeted beauty offer will increase customer conversion.",
-            height=100,
+        control_experience = st.text_area(
+            "Control / current experience",
+            "Current homepage and standard customer journey.",
+            height=125,
+            help="Describe what the control group receives.",
         )
-        offer = st.text_area(
-            "Treatment / offer",
-            "Personalized beauty promotion shown to the treatment group.",
-            height=100,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with right:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        category = st.selectbox(
-            "Experiment category", ["Beauty", "Electronics", "Grocery"]
+        offer = st.text_area(
+            "Treatment / proposed experience",
+            "New campaign creative and product placement shown to the treatment group.",
+            height=125,
+            help="Describe the change: campaign, UI, checkout, pricing, messaging, feature, etc.",
         )
-        success_metric = st.text_input("Primary success metric", "Conversion rate")
-        target_segment = st.text_input("Target segment", "All customers")
 
+    st.write("")
+
+    st.markdown(
+        '<div class="section-title">4. Measurement & experiment design</div>'
+        '<div class="section-sub">Choose the primary outcome and who should receive the intervention.</div>',
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns([1, 1, 1], gap="large")
+
+    with c1:
+        success_metric = st.selectbox(
+            "Primary success metric",
+            SUCCESS_METRICS,
+            index=0,
+        )
+    with c2:
+        target_segment = st.text_input(
+            "Target segment",
+            "All customers",
+            help="Examples: mobile users, new customers, high-value customers.",
+        )
+    with c3:
         treatment_share = st.slider(
             "Treatment share",
             min_value=0.10,
@@ -1242,38 +1362,44 @@ elif page == PAGE_NAMES[2]:
             value=0.50,
             step=0.05,
         )
+
+    c1, c2, c3 = st.columns([1, 1, 1], gap="large")
+    with c1:
         experiment_seed = st.number_input(
             "Experiment seed",
             min_value=0,
             max_value=999999,
             value=42,
             step=1,
+            help="Same seed produces a reproducible synthetic randomisation.",
         )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    control_n = population_size - int(population_size * treatment_share)
-    treatment_n = population_size - control_n
-
-    st.write("")
-    kpi_row(
-        [
-            {"label": "Expected control", "value": f"{control_n:,}", "sub": pct(1 - treatment_share, 0) + " of population"},
-            {"label": "Expected treatment", "value": f"{treatment_n:,}", "sub": pct(treatment_share, 0) + " of population"},
-            {"label": "Category", "value": category, "sub": "Simulator behaviour profile"},
-            {"label": "Seed", "value": str(experiment_seed), "sub": "Reproducible randomisation"},
-        ]
-    )
+    with c2:
+        control_n = population_size - int(population_size * treatment_share)
+        treatment_n = population_size - control_n
+        st.metric("Expected control", f"{control_n:,}")
+    with c3:
+        st.metric("Expected treatment", f"{treatment_n:,}")
 
     st.write("")
-    if st.button("🚀 Run virtual experiment", type="primary", use_container_width=True):
+
+    if st.button(
+        "🚀 Simulate this experiment on synthetic customers",
+        type="primary",
+        use_container_width=True,
+    ):
         try:
-            with st.spinner("Randomising synthetic customers and simulating responses…"):
+            with st.spinner(
+                "Randomising synthetic customers and simulating the selected business scenario…"
+            ):
                 result = post(
                     "/experiments/simulate",
                     {
                         "population_id": population_id,
                         "name": experiment_name,
+                        "experiment_type": experiment_type,
+                        "product": product,
                         "hypothesis": hypothesis,
+                        "control_experience": control_experience,
                         "offer": offer,
                         "success_metric": success_metric,
                         "target_segment": target_segment,
@@ -1286,7 +1412,10 @@ elif page == PAGE_NAMES[2]:
             st.session_state["experiment_result"] = result
             st.session_state["experiment_meta"] = {
                 "name": experiment_name,
+                "experiment_type": experiment_type,
+                "product": product,
                 "hypothesis": hypothesis,
+                "control_experience": control_experience,
                 "offer": offer,
                 "success_metric": success_metric,
                 "target_segment": target_segment,
@@ -1300,7 +1429,10 @@ elif page == PAGE_NAMES[2]:
 
             st.toast("Experiment completed", icon="✅")
             st.success(f"Experiment completed: {result['experiment_id']}")
-            st.info("Open **4. Treatment vs Control** for the full result and **5. Experiment Report** for the report.")
+            st.info(
+                "Open **4. Treatment vs Control** for the full result and "
+                "**5. Experiment Report** for the report."
+            )
 
             kpi_row(
                 [
@@ -1318,7 +1450,6 @@ elif page == PAGE_NAMES[2]:
             st.error(str(exc))
 
 
-# =============================================================================
 # PAGE 4 — Treatment vs control
 # =============================================================================
 elif page == PAGE_NAMES[3]:
@@ -1331,7 +1462,7 @@ elif page == PAGE_NAMES[3]:
 
     section(
         meta.get("name", "Virtual experiment"),
-        f"{meta.get('category', 'Unknown')} · Experiment ID {result['experiment_id']}",
+        f"{meta.get('experiment_type', 'Experiment')} · {meta.get('product', 'General product')} · Experiment ID {result['experiment_id']}",
     )
 
     control = result["control"]
@@ -1603,8 +1734,10 @@ else:
               <h4>Business setup</h4>
               <div class="desc">What was tested and why.</div>
               <div style="color:#334155;font-size:.92rem;line-height:1.85;">
-                <b>Population:</b> {meta.get('population_size', 0):,} synthetic customers<br>
+                <b>Experiment type:</b> {meta.get('experiment_type', '—')}<br>
+                <b>Product / experience:</b> {meta.get('product', '—')}<br>
                 <b>Category:</b> {meta.get('category', '—')}<br>
+                <b>Population:</b> {meta.get('population_size', 0):,} synthetic customers<br>
                 <b>Target segment:</b> {meta.get('target_segment', '—')}<br>
                 <b>Treatment share:</b> {pct(meta.get('treatment_share', 0), 0)}<br>
                 <b>Primary success metric:</b> {meta.get('success_metric', '—')}
@@ -1612,7 +1745,8 @@ else:
               <hr style="border:none;border-top:1px solid rgba(15,23,42,.08);margin:14px 0;">
               <div style="color:#334155;font-size:.92rem;line-height:1.8;">
                 <b>Hypothesis:</b><br>{meta.get('hypothesis', '—')}<br><br>
-                <b>Treatment / offer:</b><br>{meta.get('offer', '—')}
+                <b>Control / current:</b><br>{meta.get('control_experience', '—')}<br><br>
+                <b>Treatment / proposed:</b><br>{meta.get('offer', '—')}
               </div>
             </div>
             """,
@@ -1699,6 +1833,8 @@ else:
 ## Experiment
 - Name: {meta.get("name", "Virtual Experiment")}
 - Experiment ID: {result["experiment_id"]}
+- Experiment type: {meta.get("experiment_type", "—")}
+- Product / experience: {meta.get("product", "—")}
 - Category: {meta.get("category", "—")}
 - Population: {meta.get("population_size", "—")} synthetic customers
 - Population ID: {meta.get("population_id", "—")}
@@ -1709,7 +1845,9 @@ else:
 ## Business setup
 Hypothesis: {meta.get("hypothesis", "—")}
 
-Treatment / offer: {meta.get("offer", "—")}
+Control / current experience: {meta.get("control_experience", "—")}
+
+Treatment / proposed experience: {meta.get("offer", "—")}
 
 Primary success metric: {meta.get("success_metric", "—")}
 

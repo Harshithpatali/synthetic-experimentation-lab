@@ -92,12 +92,19 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
         [{**truth, "population_id": population_id} for truth in population.truth],
     )
 
-    for view in ("observable", "truth"):
-        edges = build_similarity_edges(population.customers, population.truth, view)
-        db.execute(
-            insert(CustomerEdge),
-            [{**edge, "population_id": population_id} for edge in edges],
-        )
+    # Store the company-observable network for the interactive India map.
+    # Hidden truth variables remain available for the simulator but are not
+    # materialized into the public network at population-generation time.
+    edges = build_similarity_edges(
+        population.customers,
+        population.truth,
+        "observable",
+        max_edges_per_node=4,
+    )
+    db.execute(
+        insert(CustomerEdge),
+        [{**edge, "population_id": population_id} for edge in edges],
+    )
 
     db.commit()
 
@@ -147,6 +154,48 @@ def get_population(
     }
 
 
+
+@app.get("/population/{population_id}/map")
+def population_map(
+    population_id: str,
+    limit: int = Query(30000, ge=1, le=30000),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(
+            Customer.id,
+            Customer.lat,
+            Customer.lon,
+            Customer.city,
+            Customer.state,
+            Customer.gender,
+            Customer.customer_type,
+        )
+        .filter(Customer.population_id == population_id)
+        .limit(limit)
+        .all()
+    )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Population not found")
+
+    return {
+        "population_id": population_id,
+        "rows": [
+            {
+                "id": row.id,
+                "lat": row.lat,
+                "lon": row.lon,
+                "city": row.city,
+                "state": row.state,
+                "gender": row.gender,
+                "customer_type": row.customer_type,
+            }
+            for row in rows
+        ],
+    }
+
+
 @app.get("/network")
 def network(
     population_id: str,
@@ -160,6 +209,7 @@ def network(
             CustomerEdge.population_id == population_id,
             CustomerEdge.view == view,
         )
+        .order_by(CustomerEdge.weight.desc())
         .limit(limit)
         .all()
     )
@@ -307,9 +357,14 @@ def run_experiment(req: ExperimentCreate, db: Session = Depends(get_db)):
             config={
                 "synthetic": True,
                 "hidden_variables_used": True,
+                "hypothesis": req.hypothesis,
+                "offer": req.offer,
+                "success_metric": req.success_metric,
+                "target_segment": req.target_segment,
             },
         )
     )
+    db.flush()
 
     db.execute(
         insert(ExperimentOutcome),
@@ -382,6 +437,96 @@ def run_experiment(req: ExperimentCreate, db: Session = Depends(get_db)):
         "interpretation": (
             "The 95% interval reflects randomization/sampling variability in "
             "the synthetic run, not simulator-assumption uncertainty. "
+            "A positive synthetic result supports considering a real-world "
+            "pilot; it does not prove the same effect will occur on real customers."
+        ),
+    }
+
+
+
+@app.get("/experiments/{experiment_id}")
+def experiment_detail(
+    experiment_id: str,
+    db: Session = Depends(get_db),
+):
+    experiment = (
+        db.query(Experiment)
+        .filter(Experiment.id == experiment_id)
+        .first()
+    )
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    outcomes = (
+        db.query(ExperimentOutcome)
+        .filter(ExperimentOutcome.experiment_id == experiment_id)
+        .all()
+    )
+    segment_rows = (
+        db.query(SegmentResult)
+        .filter(SegmentResult.experiment_id == experiment_id)
+        .order_by(SegmentResult.uplift.desc())
+        .all()
+    )
+
+    control = [item for item in outcomes if item.arm == "control"]
+    treatment = [item for item in outcomes if item.arm == "treatment"]
+
+    stats = difference_in_proportions(
+        len(control),
+        sum(item.converted for item in control),
+        len(treatment),
+        sum(item.converted for item in treatment),
+    )
+
+    control_revenue = sum(item.revenue for item in control)
+    treatment_revenue = sum(item.revenue for item in treatment)
+
+    return {
+        "experiment_id": experiment.id,
+        "name": experiment.name,
+        "category": experiment.category,
+        "population_id": experiment.population_id,
+        "treatment_share": experiment.treatment_share,
+        "seed": experiment.seed,
+        "created_at": experiment.created_at,
+        "config": experiment.config,
+        "control": {
+            "n": len(control),
+            "conversion_rate": stats["control_rate"],
+            "revenue": control_revenue,
+            "revenue_per_customer": (
+                control_revenue / len(control) if control else 0.0
+            ),
+        },
+        "treatment": {
+            "n": len(treatment),
+            "conversion_rate": stats["treatment_rate"],
+            "revenue": treatment_revenue,
+            "revenue_per_customer": (
+                treatment_revenue / len(treatment)
+                if treatment else 0.0
+            ),
+        },
+        "absolute_uplift": stats["uplift"],
+        "relative_uplift": (
+            stats["uplift"] / stats["control_rate"]
+            if stats["control_rate"] else None
+        ),
+        "ci_95": [stats["ci_low"], stats["ci_high"]],
+        "segments": [
+            {
+                "segment": row.segment,
+                "control_rate": row.control_rate,
+                "treatment_rate": row.treatment_rate,
+                "uplift": row.uplift,
+                "n": row.n,
+            }
+            for row in segment_rows
+        ],
+        "interpretation": (
+            "The 95% interval reflects randomization/sampling variability "
+            "in the synthetic run, not simulator-assumption uncertainty. "
             "A positive synthetic result supports considering a real-world "
             "pilot; it does not prove the same effect will occur on real customers."
         ),

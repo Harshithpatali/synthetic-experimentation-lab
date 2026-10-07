@@ -409,26 +409,9 @@ def generate_population(size, seed):
 
     return Population(customers, truth)
 
-def build_similarity_edges(
-    customers,
-    truth,
-    view,
-    max_edges_per_node=1,
-):
-    """
-    Build a global, feature-level observable similarity network.
-
-    No city is used as a hard partition. For every observable feature we find
-    the strongest globally similar neighbours, so a Bengaluru customer can
-    connect to a Mumbai, Delhi, Kolkata, or any other city when the feature
-    provides measurable similarity.
-
-    Numeric features use exact nearest-neighbour relationships in sorted
-    feature space. Categorical features connect customers within the same
-    category. The resulting graph remains compact because the number of
-    neighbours is capped per feature.
-    """
-    feature_specs = {
+def _similarity_feature_specs():
+    """Return the observable/truth feature definitions used by the graph builder."""
+    return {
         "gender": {
             "label": "Same gender",
             "kind": "categorical",
@@ -494,6 +477,26 @@ def build_similarity_edges(
         },
     }
 
+
+def iter_similarity_edges(
+    customers,
+    truth,
+    view,
+    max_edges_per_node=1,
+):
+    """
+    Stream similarity edges one feature at a time.
+
+    The previous implementation accumulated the complete graph as a Python
+    list before inserting it into PostgreSQL. With 30,000 customers and nine
+    observable features that can mean hundreds of thousands of dictionaries,
+    UUID strings and JSON objects resident at once.
+
+    This iterator keeps only the current feature vector, feature-local
+    duplicate tracking, and the small edge batch owned by the caller.
+    """
+    feature_specs = _similarity_feature_specs()
+
     truth_by_customer = (
         {item["customer_id"]: item for item in truth}
         if view == "truth"
@@ -502,64 +505,73 @@ def build_similarity_edges(
 
     n = len(customers)
     if n < 2:
-        return []
+        return
 
     per_feature = max(1, int(max_edges_per_node))
-    edges = []
-    seen = set()
 
-    def add_edge(i: int, j: int, feature: str, base_score: float) -> None:
-        if i == j:
-            return
+    for feature, spec in feature_specs.items():
+        dtype = object if spec["kind"] == "categorical" else float
+        values = np.fromiter(
+            (spec["values"](customer) for customer in customers),
+            dtype=dtype,
+            count=n,
+        )
 
-        key = (min(i, j), max(i, j), feature)
-        if key in seen:
-            return
+        # The old implementation kept one global set for all nine features.
+        # A feature-local set is enough and lowers retained memory.
+        seen = set()
 
-        score = float(min(max(base_score, 0.0), 1.0))
-        reasons = {
-            "feature": feature,
-            "label": feature_specs[feature]["label"],
-            "evidence": [feature_specs[feature]["label"]],
-        }
+        def make_edge(i: int, j: int, base_score: float):
+            if i == j:
+                return None
 
-        if customers[i]["city"] != customers[j]["city"]:
-            reasons["evidence"].append(
-                f"Cross-city: {customers[i]['city']} ↔ {customers[j]['city']}"
-            )
+            key = (min(i, j), max(i, j))
+            if key in seen:
+                return None
 
-        if view == "truth":
-            left = truth_by_customer.get(customers[i]["id"], {})
-            right = truth_by_customer.get(customers[j]["id"], {})
+            score = float(min(max(base_score, 0.0), 1.0))
+            reasons = {
+                "feature": feature,
+                "label": spec["label"],
+                "evidence": [spec["label"]],
+            }
 
-            hidden_similarity = 0.0
-            if left and right:
-                hidden_similarity = (
-                    0.30
-                    * math.exp(
-                        -abs(
-                            left["price_sensitivity"]
-                            - right["price_sensitivity"]
-                        )
-                    )
-                    + 0.20
-                    * math.exp(
-                        -abs(
-                            left["novelty_preference"]
-                            - right["novelty_preference"]
-                        )
-                    )
+            if customers[i]["city"] != customers[j]["city"]:
+                reasons["evidence"].append(
+                    f"Cross-city: {customers[i]['city']} ↔ {customers[j]['city']}"
                 )
 
-            score = float(min(1.0, score + hidden_similarity))
-            reasons["hidden_similarity"] = round(
-                float(hidden_similarity),
-                4,
-            )
+            if view == "truth":
+                left = truth_by_customer.get(customers[i]["id"], {})
+                right = truth_by_customer.get(customers[j]["id"], {})
 
-        seen.add(key)
-        edges.append(
-            {
+                hidden_similarity = 0.0
+                if left and right:
+                    hidden_similarity = (
+                        0.30
+                        * math.exp(
+                            -abs(
+                                left["price_sensitivity"]
+                                - right["price_sensitivity"]
+                            )
+                        )
+                        + 0.20
+                        * math.exp(
+                            -abs(
+                                left["novelty_preference"]
+                                - right["novelty_preference"]
+                            )
+                        )
+                    )
+
+                score = float(min(1.0, score + hidden_similarity))
+                reasons["hidden_similarity"] = round(
+                    float(hidden_similarity),
+                    4,
+                )
+
+            seen.add(key)
+            return {
                 "id": str(uuid.uuid4()),
                 "source_id": customers[i]["id"],
                 "target_id": customers[j]["id"],
@@ -567,12 +579,6 @@ def build_similarity_edges(
                 "view": view,
                 "reasons": reasons,
             }
-        )
-
-    for feature, spec in feature_specs.items():
-        values = np.asarray(
-            [spec["values"](customer) for customer in customers],
-        )
 
         if spec["kind"] == "categorical":
             groups = {}
@@ -580,15 +586,17 @@ def build_similarity_edges(
                 groups.setdefault(value, []).append(index)
 
             for indices in groups.values():
-                if len(indices) < 2:
+                group_size = len(indices)
+                if group_size < 2:
                     continue
 
-                # Circular neighbour assignment gives every customer in the
-                # category a feature edge without creating a giant clique.
                 for pos, i in enumerate(indices):
-                    for offset in range(1, min(per_feature, len(indices) - 1) + 1):
-                        j = indices[(pos + offset) % len(indices)]
-                        add_edge(i, j, feature, 1.0)
+                    max_offset = min(per_feature, group_size - 1)
+                    for offset in range(1, max_offset + 1):
+                        j = indices[(pos + offset) % group_size]
+                        edge = make_edge(i, j, 1.0)
+                        if edge is not None:
+                            yield edge
 
         else:
             order = np.argsort(values, kind="mergesort")
@@ -600,7 +608,6 @@ def build_similarity_edges(
                 for offset in range(1, per_feature + 1):
                     left = position - offset
                     right = position + offset
-
                     if left >= 0:
                         candidate_positions.add(left)
                     if right < n:
@@ -619,10 +626,33 @@ def build_similarity_edges(
                 ranked.sort(reverse=True)
 
                 for score, j in ranked[:per_feature]:
-                    if score >= spec["threshold"]:
-                        add_edge(i, j, feature, score)
+                    if score < spec["threshold"]:
+                        continue
+                    edge = make_edge(i, j, score)
+                    if edge is not None:
+                        yield edge
 
-    return edges
+
+def build_similarity_edges(
+    customers,
+    truth,
+    view,
+    max_edges_per_node=1,
+):
+    """
+    Backwards-compatible list-returning wrapper used by small tests/tools.
+
+    Production endpoints should consume iter_similarity_edges() directly so
+    the complete graph is never held in memory at once.
+    """
+    return list(
+        iter_similarity_edges(
+            customers,
+            truth,
+            view,
+            max_edges_per_node=max_edges_per_node,
+        )
+    )
 
 def simulate_outcomes(
     customers,

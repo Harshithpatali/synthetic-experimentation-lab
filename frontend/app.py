@@ -343,6 +343,11 @@ def load_population_map(population_id: str):
     return get(f"/population/{population_id}/map", limit=30000)
 
 
+@st.cache_data(ttl=1800, max_entries=8, show_spinner=False)
+def load_population_diagnostics(population_id: str):
+    return get(f"/population/{population_id}/diagnostics")
+
+
 @st.cache_data(ttl=1800, max_entries=32, show_spinner=False)
 def load_network(population_id: str, limit: int, features: tuple[str, ...]):
     return get(
@@ -765,6 +770,7 @@ with st.sidebar:
         ]:
             st.session_state.pop(key, None)
         load_population_map.clear()
+        load_population_diagnostics.clear()
         load_network.clear()
         load_health.clear()
         st.rerun()
@@ -819,10 +825,10 @@ if page == PAGE_NAMES[0]:
               </div>
               <ul style="color:#475569;font-size:.88rem;line-height:1.75;margin:0;padding-left:1.1rem;">
                 <li>Lat / lon jittered around major Indian city centres</li>
-                <li>Demographics: gender, age, income band, city, state</li>
-                <li>Customer type: New, Repeat, Loyal</li>
+                <li>Correlated age, income, engagement, spending and digital behaviour</li>
+                <li>Customer lifecycle: New, Repeat, Loyal</li>
                 <li>Hidden response behaviour used only by the simulator</li>
-                <li>Observable similarity edges between customers</li>
+                <li>Global cross-city similarity edges by observable feature</li>
               </ul>
             </div>
             """,
@@ -842,8 +848,10 @@ if page == PAGE_NAMES[0]:
             st.session_state["population_seed"] = result["seed"]
             st.session_state.pop("experiment_result", None)
             st.session_state.pop("experiment_meta", None)
+            st.session_state.pop("population_diagnostics", None)
 
             load_population_map.clear()
+            load_population_diagnostics.clear()
             load_network.clear()
 
             st.toast("Population generated successfully", icon="✅")
@@ -878,6 +886,71 @@ if page == PAGE_NAMES[0]:
                 },
             ]
         )
+
+    with st.expander("🧪 Validate population structure"):
+        st.caption(
+            "These checks verify that the synthetic generator preserves the "
+            "relationships it was designed to model. They are not a substitute "
+            "for calibration against real company data."
+        )
+
+        if st.button(
+            "Run population diagnostics",
+            key="run_population_diagnostics",
+        ):
+            try:
+                with st.spinner("Checking population distributions and relationships…"):
+                    diagnostics = load_population_diagnostics(
+                        st.session_state["population_id"]
+                    )
+                st.session_state["population_diagnostics"] = diagnostics
+            except Exception as exc:
+                st.error(str(exc))
+
+        diagnostics = st.session_state.get("population_diagnostics")
+        if diagnostics:
+            score = diagnostics.get("score", 0.0)
+            label = diagnostics.get("label", "Generator consistency")
+            tone = "✅" if score >= 80 else "⚠️" if score >= 60 else "❗"
+            st.metric(
+                f"{tone} {label}",
+                f"{score:.1f}/100",
+                help="Structural consistency score, not a real-world realism score.",
+            )
+
+            checks = diagnostics.get("checks", [])
+            if checks:
+                check_frame = pd.DataFrame(
+                    [
+                        {
+                            "Check": item.get("name", "—"),
+                            "Result": "PASS" if item.get("passed") else "REVIEW",
+                            "Value": item.get("value", "—"),
+                        }
+                        for item in checks
+                    ]
+                )
+                st.dataframe(
+                    check_frame,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            summary = diagnostics.get("summary", {})
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric("Median age", summary.get("median_age", "—"))
+            with m2:
+                st.metric("Median AOV", inr(summary.get("median_aov", 0)))
+            with m3:
+                st.metric("Median orders", summary.get("median_orders", "—"))
+            with m4:
+                st.metric(
+                    "Geography",
+                    f"{summary.get('cities', 0)} cities",
+                )
+
+            st.caption(diagnostics.get("caveat", ""))
 
     with st.expander("ℹ️ How the simulation pipeline works"):
         st.markdown(

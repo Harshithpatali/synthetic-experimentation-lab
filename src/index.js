@@ -1,32 +1,56 @@
-import { Container } from "@cloudflare/containers";
-import { env } from "cloudflare:workers";
+import { DurableObject } from "cloudflare:workers";
 
-export class Backend extends Container {
-  defaultPort = 8000;
-  sleepAfter = "20m";
-  enableInternet = true;
-  envVars = {
-    DATABASE_URL: env.DATABASE_URL,
-  };
+const TIMEOUT_MS=10*60*1000;
+
+export class Backend extends DurableObject {
+  starting;
+
+  constructor(ctx, env) {
+    super(ctx, env);
+    if (ctx.container?.running) {
+      void ctx.blockConcurrencyWhile(() => ctx.container.setInactivityTimeout(TIMEOUT_MS));
+    }
+  }
+
+  async start() {
+    const container=this.ctx.container;
+    if (!container) throw new Error("Container binding is not configured");
+
+    if (!container.running) {
+      container.start({
+        image: container.images.base,
+        enableInternet: true,
+        env: { DATABASE_URL: this.env.DATABASE_URL }
+      });
+      await container.setInactivityTimeout(TIMEOUT_MS);
+    }
+
+    for (let attempt=0; attempt<60; attempt++) {
+      try {
+        const response=await container.getTcpPort(8000).fetch("http://container/health");
+        if (response.ok) return;
+      } catch (_) {}
+      await new Promise(resolve=>setTimeout(resolve,500));
+    }
+    throw new Error("FastAPI container did not become ready");
+  }
+
+  async fetch(request) {
+    this.starting ??= this.start().finally(()=>{ this.starting=undefined; });
+    await this.starting;
+
+    const url=new URL(request.url);
+    url.protocol="http:";
+    url.host="container";
+    const forwarded=new Request(url,request);
+    forwarded.headers.delete("host");
+    return this.ctx.container.getTcpPort(8000).fetch(forwarded);
+  }
 }
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/") {
-      return new Response(
-        JSON.stringify({
-          service: "synthetic-experimentation-lab",
-          backend: "FastAPI on Cloudflare Containers",
-          database: "Neon PostgreSQL",
-          status: "ok",
-        }),
-        { headers: { "content-type": "application/json" } },
-      );
-    }
-
-    const backend = env.BACKEND.getByName("primary");
-    return backend.fetch(request);
-  },
+    const id=env.BACKEND.idFromName("primary");
+    return env.BACKEND.get(id).fetch(request);
+  }
 };

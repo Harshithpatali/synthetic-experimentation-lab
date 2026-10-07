@@ -2,7 +2,7 @@ import math
 
 from backend.app.analytics import difference_in_proportions
 from backend.app.config import normalize_database_url
-from backend.app.simulation import generate_population
+from backend.app.simulation import build_similarity_edges, generate_population
 
 
 def test_population_reproducible():
@@ -34,3 +34,58 @@ def test_neon_url_normalization():
 
     assert normalized.startswith("postgresql+psycopg://")
     assert normalized.endswith("sslmode=require")
+
+
+def test_global_feature_network_can_connect_across_cities():
+    customers = [
+        {
+            "id": "a",
+            "age": 30,
+            "gender": "Female",
+            "city": "Bengaluru",
+            "state": "Karnataka",
+            "lat": 12.97,
+            "lon": 77.59,
+            "device": "Mobile",
+            "customer_type": "Repeat",
+            "orders": 5,
+            "aov": 1100.0,
+            "recency_days": 20,
+            "sessions_30d": 7,
+            "cart_abandonments": 2,
+        },
+        {
+            "id": "b",
+            "age": 30,
+            "gender": "Female",
+            "city": "Mumbai",
+            "state": "Maharashtra",
+            "lat": 19.07,
+            "lon": 72.87,
+            "device": "Mobile",
+            "customer_type": "Repeat",
+            "orders": 5,
+            "aov": 1100.0,
+            "recency_days": 20,
+            "sessions_30d": 7,
+            "cart_abandonments": 2,
+        },
+    ]
+
+    edges = build_similarity_edges(customers, [], "observable", max_edges_per_node=1)
+
+    assert edges
+    assert any(
+        edge["reasons"]["feature"] in {
+            "gender",
+            "device",
+            "customer_type",
+            "age",
+            "orders",
+            "aov",
+            "recency",
+            "sessions",
+            "cart_abandonments",
+        }
+        for edge in edges
+    )

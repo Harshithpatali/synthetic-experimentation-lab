@@ -1,0 +1,1 @@
+{"name":"synthetic-experimentation-lab","private":true,"version":"1.0.0","scripts":{"dev":"wrangler dev","deploy":"wrangler deploy","db:init":"wrangler d1 execute synthetic-experimentation-lab --file=./schema.sql --remote"},"devDependencies":{"wrangler":"^4.40.0"}}

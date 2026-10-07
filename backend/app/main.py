@@ -115,6 +115,72 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
     }
 
 
+@app.post("/population/{population_id}/network/rebuild")
+def rebuild_population_network(
+    population_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Rebuild the observable network for an existing population.
+
+    This is useful for populations generated with an older same-city network
+    implementation. The rebuilt graph uses global cross-city feature edges.
+    """
+    customers = (
+        db.query(Customer)
+        .filter(Customer.population_id == population_id)
+        .all()
+    )
+    if not customers:
+        raise HTTPException(status_code=404, detail="Population not found")
+
+    customer_dicts = [
+        {
+            "id": customer.id,
+            "age": customer.age,
+            "gender": customer.gender,
+            "city": customer.city,
+            "state": customer.state,
+            "lat": customer.lat,
+            "lon": customer.lon,
+            "device": customer.device,
+            "customer_type": customer.customer_type,
+            "orders": customer.orders,
+            "aov": customer.aov,
+            "recency_days": customer.recency_days,
+            "sessions_30d": customer.sessions_30d,
+            "cart_abandonments": customer.cart_abandonments,
+        }
+        for customer in customers
+    ]
+
+    db.query(CustomerEdge).filter(
+        CustomerEdge.population_id == population_id,
+        CustomerEdge.view == "observable",
+    ).delete(synchronize_session=False)
+
+    edges = build_similarity_edges(
+        customer_dicts,
+        [],
+        "observable",
+        max_edges_per_node=1,
+    )
+
+    if edges:
+        db.execute(
+            insert(CustomerEdge),
+            [{**edge, "population_id": population_id} for edge in edges],
+        )
+
+    db.commit()
+
+    return {
+        "population_id": population_id,
+        "edges_rebuilt": len(edges),
+        "network": "global cross-city feature similarity",
+    }
+
+
 @app.get("/population/{population_id}")
 def get_population(
     population_id: str,

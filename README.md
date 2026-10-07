@@ -50,6 +50,28 @@ A Python data-science platform that creates a synthetic customer population, ran
              v
     Decision about a real-world pilot
 
+## Population generation model
+
+The population generator uses a correlated latent-factor model rather than
+independent random draws. Latent socioeconomic, engagement, digital, price,
+novelty, and risk factors induce relationships among age, income, order
+frequency, AOV, sessions, recency, device usage, cart abandonment, lifecycle
+state, and product affinity.
+
+This improves internal behavioural coherence while keeping the generator
+lightweight: it uses NumPy only and does not call an LLM or external
+generation API.
+
+The application also provides an on-demand **Population Diagnostics** view.
+It checks structural relationships such as income↔AOV, orders↔sessions,
+engagement↔recency, lifecycle ordering, cart-friction behaviour, and geographic
+diversity.
+
+The diagnostics score is explicitly a **generator-consistency score**. It is
+not a claim that the synthetic population matches real people. Real-world
+fidelity requires calibration against a reference dataset supplied by the
+company.
+
 ## Observable vs hidden variables
 
 Observable:

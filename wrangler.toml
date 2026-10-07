@@ -11,14 +11,13 @@ required = ["DATABASE_URL"]
 
 [[containers]]
 class_name = "Backend"
-image = "./Dockerfile.api"
+image = "./backend/Dockerfile"
 max_instances = 1
-instance_type = "basic"
 
 [[durable_objects.bindings]]
 name = "BACKEND"
 class_name = "Backend"
 
-[[migrations]]
-new_sqlite_classes = ["Backend"]
-tag = "v1"
+[exports.Backend]
+type = "durable-object"
+storage = "sqlite"

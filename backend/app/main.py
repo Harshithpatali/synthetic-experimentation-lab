@@ -99,7 +99,7 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
         population.customers,
         population.truth,
         "observable",
-        max_edges_per_node=4,
+        max_edges_per_node=1,
     )
     db.execute(
         insert(CustomerEdge),
@@ -200,36 +200,95 @@ def population_map(
 def network(
     population_id: str,
     view: str = Query("observable", pattern="^(observable|truth)$"),
-    limit: int = Query(3000, ge=1, le=10000),
+    limit: int = Query(9000, ge=1, le=30000),
+    features: str | None = Query(
+        None,
+        description="Comma-separated observable edge features to include.",
+    ),
     db: Session = Depends(get_db),
 ):
-    edges = (
-        db.query(CustomerEdge)
-        .filter(
-            CustomerEdge.population_id == population_id,
-            CustomerEdge.view == view,
-        )
-        .order_by(CustomerEdge.weight.desc())
-        .limit(limit)
-        .all()
+    all_features = [
+        "gender",
+        "device",
+        "customer_type",
+        "age",
+        "orders",
+        "aov",
+        "recency",
+        "sessions",
+        "cart_abandonments",
+    ]
+
+    selected_features = (
+        [item.strip() for item in features.split(",") if item.strip()]
+        if features
+        else all_features
+    )
+    selected_features = [
+        feature for feature in selected_features if feature in all_features
+    ]
+
+    if not selected_features:
+        return {
+            "population_id": population_id,
+            "view": view,
+            "semantic": (
+                "An edge means measurable evidence of similarity. "
+                "No edge does not mean no similarity."
+            ),
+            "edges": [],
+        }
+
+    per_feature_limit = max(
+        1,
+        (limit + len(selected_features) - 1) // len(selected_features),
     )
 
-    return {
-        "population_id": population_id,
-        "view": view,
-        "semantic": (
-            "An edge means measurable evidence of similarity. "
-            "No edge does not mean no similarity."
-        ),
-        "edges": [
+    edges = []
+    for feature in selected_features:
+        feature_edges = (
+            db.query(CustomerEdge)
+            .filter(
+                CustomerEdge.population_id == population_id,
+                CustomerEdge.view == view,
+                CustomerEdge.reasons["feature"].as_string() == feature,
+            )
+            .order_by(CustomerEdge.weight.desc())
+            .limit(per_feature_limit)
+            .all()
+        )
+        edges.extend(feature_edges)
+
+    edges = sorted(
+        edges,
+        key=lambda edge: float(edge.weight),
+        reverse=True,
+    )[:limit]
+
+    payload = []
+    for edge in edges:
+        reason = edge.reasons if isinstance(edge.reasons, dict) else {}
+        payload.append(
             {
                 "source": edge.source_id,
                 "target": edge.target_id,
                 "weight": edge.weight,
-                "reasons": edge.reasons,
+                "feature": reason.get("feature", "unknown"),
+                "feature_label": reason.get("label", "Similarity"),
+                "reasons": reason.get("evidence", edge.reasons),
             }
-            for edge in edges
-        ],
+        )
+
+    return {
+        "population_id": population_id,
+        "view": view,
+        "features": selected_features,
+        "semantic": (
+            "An edge means measurable evidence of observable similarity. "
+            "Edges are global across the full customer population and are "
+            "not restricted to customers in the same city."
+        ),
+        "edges": payload,
     }
 
 

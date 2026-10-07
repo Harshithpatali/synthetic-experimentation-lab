@@ -407,7 +407,7 @@ def build_india_map(
     # --- Density layer -------------------------------------------------------
     if density:
         fig.add_trace(
-            go.Densitymapbox(
+            go.Densitymap(
                 lat=pts["lat"],
                 lon=pts["lon"],
                 radius=14,
@@ -443,7 +443,7 @@ def build_india_map(
 
         if edge_lat:
             fig.add_trace(
-                go.Scattermapbox(
+                go.Scattermap(
                     lat=edge_lat,
                     lon=edge_lon,
                     mode="lines",
@@ -482,7 +482,7 @@ def build_india_map(
             if subset.empty:
                 continue
             fig.add_trace(
-                go.Scattermapbox(
+                go.Scattermap(
                     lat=subset["lat"],
                     lon=subset["lon"],
                     mode="markers",
@@ -499,7 +499,7 @@ def build_india_map(
 
     # --- Layout --------------------------------------------------------------
     fig.update_layout(
-        mapbox=dict(
+        map=dict(
             style=map_style,
             center=dict(lat=22.6, lon=79.0),
             zoom=4.05,

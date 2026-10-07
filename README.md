@@ -148,6 +148,11 @@ The production frontend is organized as five company-facing pages:
 
 The map shows synthetic customer locations distributed around major Indian cities. The full 30,000-customer population is stored in Neon, while the frontend draws a bounded number of the strongest edges to keep the browser responsive.
 
+The default India map uses a dark technical theme with neon feature-specific
+network signals and a subtle glow layer. Users can switch to light or street
+maps when geographic context is more important than network visualization.
+
+
 ### Frontend performance
 
 The Streamlit frontend uses a layered cache strategy:
@@ -216,10 +221,11 @@ The Render service is configured as:
 ### Render deployment
 
 1. Open the Render Dashboard.
-2. Create a new Blueprint from this GitHub repository, or create a Web Service manually.
-3. If using the Blueprint, Render will ask for the DATABASE_URL secret because it is marked sync: false.
-4. Deploy the service.
-5. Verify:
+2. Create a normal Web Service from this GitHub repository.
+3. Select the main branch and Docker runtime.
+4. Set the backend root directory / Docker context as documented above, then add DATABASE_URL.
+5. Deploy the service.
+6. Verify:
 
     https://YOUR-SERVICE.onrender.com/health
 
@@ -252,6 +258,9 @@ In Streamlit Community Cloud:
 The frontend checks both the API_BASE_URL environment variable and Streamlit secrets, so the same code works locally and in Community Cloud.
 
 The Streamlit app never receives the Neon password.
+
+The Streamlit UI intentionally does not expose the Render service URL or database
+connection details; those remain deployment configuration rather than product UI.
 
 ## Environment variables
 

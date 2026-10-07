@@ -1,0 +1,22 @@
+name = "synthetic-experimentation-api"
+main = "cloudflare_backend/src/index.js"
+compatibility_date = "2026-10-07"
+
+workers_dev = true
+
+[observability]
+enabled = true
+
+[[containers]]
+class_name = "ApiContainer"
+image = "./backend/Dockerfile"
+instance_type = "standard-1"
+max_instances = 1
+
+[[durable_objects.bindings]]
+name = "API_CONTAINER"
+class_name = "ApiContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ApiContainer"]

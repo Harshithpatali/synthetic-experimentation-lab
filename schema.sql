@@ -1,7 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS population_runs (
-  id UUID PRIMARY KEY,
+  id VARCHAR(36) PRIMARY KEY,
   seed INTEGER NOT NULL,
   size INTEGER NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -9,8 +7,8 @@ CREATE TABLE IF NOT EXISTS population_runs (
 );
 
 CREATE TABLE IF NOT EXISTS customers (
-  id UUID PRIMARY KEY,
-  population_id UUID NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  population_id VARCHAR(36) NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
   age INTEGER NOT NULL,
   gender TEXT NOT NULL,
   city TEXT NOT NULL,
@@ -27,9 +25,9 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 CREATE TABLE IF NOT EXISTS simulator_truth (
-  id UUID PRIMARY KEY,
-  population_id UUID NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
-  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  population_id VARCHAR(36) NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
+  customer_id VARCHAR(36) NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   profession TEXT NOT NULL,
   income DOUBLE PRECISION NOT NULL,
   price_sensitivity DOUBLE PRECISION NOT NULL,
@@ -41,18 +39,18 @@ CREATE TABLE IF NOT EXISTS simulator_truth (
 );
 
 CREATE TABLE IF NOT EXISTS customer_edges (
-  id UUID PRIMARY KEY,
-  population_id UUID NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
-  source_id UUID NOT NULL,
-  target_id UUID NOT NULL,
+  id VARCHAR(36) PRIMARY KEY,
+  population_id VARCHAR(36) NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
+  source_id VARCHAR(36) NOT NULL,
+  target_id VARCHAR(36) NOT NULL,
   weight DOUBLE PRECISION NOT NULL,
   view TEXT NOT NULL CHECK (view IN ('observable','truth')),
   reasons JSONB NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS experiments (
-  id UUID PRIMARY KEY,
-  population_id UUID NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  population_id VARCHAR(36) NOT NULL REFERENCES population_runs(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   treatment_share DOUBLE PRECISION NOT NULL,
@@ -62,17 +60,17 @@ CREATE TABLE IF NOT EXISTS experiments (
 );
 
 CREATE TABLE IF NOT EXISTS experiment_outcomes (
-  id UUID PRIMARY KEY,
-  experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-  customer_id UUID NOT NULL,
+  id VARCHAR(36) PRIMARY KEY,
+  experiment_id VARCHAR(36) NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+  customer_id VARCHAR(36) NOT NULL,
   arm TEXT NOT NULL CHECK (arm IN ('control','treatment')),
   converted BOOLEAN NOT NULL,
   revenue DOUBLE PRECISION NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS segment_results (
-  id UUID PRIMARY KEY,
-  experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+  id VARCHAR(36) PRIMARY KEY,
+  experiment_id VARCHAR(36) NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
   segment TEXT NOT NULL,
   control_rate DOUBLE PRECISION NOT NULL,
   treatment_rate DOUBLE PRECISION NOT NULL,

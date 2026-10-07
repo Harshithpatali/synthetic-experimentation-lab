@@ -829,9 +829,9 @@ docker compose up --build
 
 | Service | URL |
 |:---|:---|
-| 🎨 Streamlit | http://localhost:8501 |
-| ⚡ FastAPI | http://localhost:8000 |
-| 📖 Swagger | http://localhost:8000/docs |
+| 🎨 Streamlit | https://synthetic-experimentation-lab.streamlit.app |
+| ⚡ FastAPI | https://synthetic-experimentation-lab.onrender.com |
+| 📖 Swagger | https://synthetic-experimentation-lab.onrender.com/docs |
 
 ### 🧪 Run Tests
 

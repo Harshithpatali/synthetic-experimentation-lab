@@ -193,66 +193,84 @@ def build_similarity_edges(
     customers,
     truth,
     view,
-    max_edges_per_node=4,
+    max_edges_per_node=1,
 ):
     """
     Build a global, feature-level observable similarity network.
 
-    Customers are compared across the full population rather than being
-    restricted to the same city. Each observable feature gets its own
-    similarity edge type so the frontend can render a different colour for
-    gender, device, customer type, age, orders, AOV, recency, sessions, and
-    cart-abandonment similarity.
+    No city is used as a hard partition. For every observable feature we find
+    the strongest globally similar neighbours, so a Bengaluru customer can
+    connect to a Mumbai, Delhi, Kolkata, or any other city when the feature
+    provides measurable similarity.
 
-    A customer can therefore connect to another city when the relationship is
-    supported by observable evidence. Geographic proximity is intentionally
-    NOT used as a prerequisite for an edge.
+    Numeric features use exact nearest-neighbour relationships in sorted
+    feature space. Categorical features connect customers within the same
+    category. The resulting graph remains compact because the number of
+    neighbours is capped per feature.
     """
     feature_specs = {
         "gender": {
             "label": "Same gender",
             "kind": "categorical",
+            "values": lambda c: c["gender"],
             "threshold": 1.0,
+            "scale": None,
         },
         "device": {
             "label": "Same device",
             "kind": "categorical",
+            "values": lambda c: c["device"],
             "threshold": 1.0,
+            "scale": None,
         },
         "customer_type": {
             "label": "Same customer type",
             "kind": "categorical",
+            "values": lambda c: c["customer_type"],
             "threshold": 1.0,
+            "scale": None,
         },
         "age": {
             "label": "Similar age",
             "kind": "numeric",
+            "values": lambda c: float(c["age"]),
             "threshold": 0.70,
+            "scale": 10.0,
         },
         "orders": {
             "label": "Similar order frequency",
             "kind": "numeric",
+            "values": lambda c: float(c["orders"]),
             "threshold": 0.65,
+            "scale": 3.0,
         },
         "aov": {
             "label": "Similar AOV",
             "kind": "numeric",
+            "values": lambda c: math.log1p(float(c["aov"])),
             "threshold": 0.65,
+            "scale": 0.35,
         },
         "recency": {
             "label": "Similar recency",
             "kind": "numeric",
+            "values": lambda c: float(c["recency_days"]),
             "threshold": 0.65,
+            "scale": 35.0,
         },
         "sessions": {
             "label": "Similar sessions",
             "kind": "numeric",
+            "values": lambda c: float(c["sessions_30d"]),
             "threshold": 0.65,
+            "scale": 6.0,
         },
         "cart_abandonments": {
             "label": "Similar cart abandonment",
             "kind": "numeric",
+            "values": lambda c: float(c["cart_abandonments"]),
             "threshold": 0.65,
+            "scale": 2.5,
         },
     }
 
@@ -266,172 +284,123 @@ def build_similarity_edges(
     if n < 2:
         return []
 
-    rng = np.random.default_rng(11)
-
-    # Sample globally. This is deliberately NOT grouped by city so strong
-    # observable similarity can create Delhi↔Mumbai, Bengaluru↔Kolkata, etc.
-    candidate_pool_size = min(60, n - 1)
-
-    # Keep the network visually useful and database-friendly:
-    # max_edges_per_node is interpreted as a per-feature cap. With the
-    # default of 1 there can be at most one strongest neighbour per feature.
     per_feature = max(1, int(max_edges_per_node))
-
     edges = []
     seen = set()
 
-    # Vector-friendly arrays for the observable features.
-    ages = np.asarray([c["age"] for c in customers], dtype=float)
-    orders = np.asarray([c["orders"] for c in customers], dtype=float)
-    aovs = np.asarray([c["aov"] for c in customers], dtype=float)
-    recencies = np.asarray(
-        [c["recency_days"] for c in customers],
-        dtype=float,
-    )
-    sessions = np.asarray(
-        [c["sessions_30d"] for c in customers],
-        dtype=float,
-    )
-    abandons = np.asarray(
-        [c["cart_abandonments"] for c in customers],
-        dtype=float,
-    )
+    def add_edge(i: int, j: int, feature: str, base_score: float) -> None:
+        if i == j:
+            return
 
-    for i, customer in enumerate(customers):
-        candidates = rng.choice(
-            n,
-            size=candidate_pool_size,
-            replace=False,
-        )
+        key = (min(i, j), max(i, j), feature)
+        if key in seen:
+            return
 
-        feature_scores: dict[str, list[tuple[float, int]]] = {
-            feature: [] for feature in feature_specs
+        score = float(min(max(base_score, 0.0), 1.0))
+        reasons = {
+            "feature": feature,
+            "label": feature_specs[feature]["label"],
+            "evidence": [feature_specs[feature]["label"]],
         }
 
-        for raw_j in candidates:
-            j = int(raw_j)
-            if i == j:
-                continue
-
-            other = customers[j]
-
-            feature_scores["gender"].append(
-                (float(customer["gender"] == other["gender"]), j)
-            )
-            feature_scores["device"].append(
-                (float(customer["device"] == other["device"]), j)
-            )
-            feature_scores["customer_type"].append(
-                (float(customer["customer_type"] == other["customer_type"]), j)
+        if customers[i]["city"] != customers[j]["city"]:
+            reasons["evidence"].append(
+                f"Cross-city: {customers[i]['city']} ↔ {customers[j]['city']}"
             )
 
-            feature_scores["age"].append(
-                (
-                    math.exp(-abs(ages[i] - ages[j]) / 10.0),
-                    j,
+        if view == "truth":
+            left = truth_by_customer.get(customers[i]["id"], {})
+            right = truth_by_customer.get(customers[j]["id"], {})
+
+            hidden_similarity = 0.0
+            if left and right:
+                hidden_similarity = (
+                    0.30
+                    * math.exp(
+                        -abs(
+                            left["price_sensitivity"]
+                            - right["price_sensitivity"]
+                        )
+                    )
+                    + 0.20
+                    * math.exp(
+                        -abs(
+                            left["novelty_preference"]
+                            - right["novelty_preference"]
+                        )
+                    )
                 )
-            )
-            feature_scores["orders"].append(
-                (
-                    math.exp(-abs(orders[i] - orders[j]) / 3.0),
-                    j,
-                )
+
+            score = float(min(1.0, score + hidden_similarity))
+            reasons["hidden_similarity"] = round(
+                float(hidden_similarity),
+                4,
             )
 
-            # Compare AOV on the log scale so large spenders do not dominate
-            # purely because their raw currency difference is larger.
-            log_aov_i = math.log1p(aovs[i])
-            log_aov_j = math.log1p(aovs[j])
-            feature_scores["aov"].append(
-                (
-                    math.exp(-abs(log_aov_i - log_aov_j) / 0.35),
-                    j,
-                )
-            )
+        seen.add(key)
+        edges.append(
+            {
+                "id": str(uuid.uuid4()),
+                "source_id": customers[i]["id"],
+                "target_id": customers[j]["id"],
+                "weight": score,
+                "view": view,
+                "reasons": reasons,
+            }
+        )
 
-            feature_scores["recency"].append(
-                (
-                    math.exp(-abs(recencies[i] - recencies[j]) / 35.0),
-                    j,
-                )
-            )
-            feature_scores["sessions"].append(
-                (
-                    math.exp(-abs(sessions[i] - sessions[j]) / 6.0),
-                    j,
-                )
-            )
-            feature_scores["cart_abandonments"].append(
-                (
-                    math.exp(-abs(abandons[i] - abandons[j]) / 2.5),
-                    j,
-                )
-            )
+    for feature, spec in feature_specs.items():
+        values = np.asarray(
+            [spec["values"](customer) for customer in customers],
+        )
 
-        for feature, scored in feature_scores.items():
-            threshold = feature_specs[feature]["threshold"]
-            selected = [
-                item
-                for item in sorted(scored, reverse=True)[:per_feature]
-                if item[0] >= threshold
-            ]
+        if spec["kind"] == "categorical":
+            groups = {}
+            for index, value in enumerate(values.tolist()):
+                groups.setdefault(value, []).append(index)
 
-            for score, j in selected:
-                key = (min(i, j), max(i, j), feature)
-                if key in seen:
+            for indices in groups.values():
+                if len(indices) < 2:
                     continue
 
-                seen.add(key)
+                # Circular neighbour assignment gives every customer in the
+                # category a feature edge without creating a giant clique.
+                for pos, i in enumerate(indices):
+                    for offset in range(1, min(per_feature, len(indices) - 1) + 1):
+                        j = indices[(pos + offset) % len(indices)]
+                        add_edge(i, j, feature, 1.0)
 
-                reasons = {
-                    "feature": feature,
-                    "label": feature_specs[feature]["label"],
-                    "evidence": [feature_specs[feature]["label"]],
-                }
+        else:
+            order = np.argsort(values, kind="mergesort")
 
-                if customer["city"] != customers[j]["city"]:
-                    reasons["evidence"].append(
-                        f"Cross-city: {customer['city']} ↔ {customers[j]['city']}"
-                    )
+            for position, i_raw in enumerate(order):
+                i = int(i_raw)
+                candidate_positions = set()
 
-                if view == "truth":
-                    left = truth_by_customer.get(customer["id"], {})
-                    right = truth_by_customer.get(customers[j]["id"], {})
-                    hidden_similarity = 0.0
+                for offset in range(1, per_feature + 1):
+                    left = position - offset
+                    right = position + offset
 
-                    if left and right:
-                        hidden_similarity = (
-                            0.30
-                            * math.exp(
-                                -abs(
-                                    left["price_sensitivity"]
-                                    - right["price_sensitivity"]
-                                )
-                            )
-                            + 0.20
-                            * math.exp(
-                                -abs(
-                                    left["novelty_preference"]
-                                    - right["novelty_preference"]
-                                )
-                            )
-                        )
+                    if left >= 0:
+                        candidate_positions.add(left)
+                    if right < n:
+                        candidate_positions.add(right)
 
-                    reasons["hidden_similarity"] = round(
-                        float(hidden_similarity),
-                        4,
-                    )
+                ranked = []
+                for candidate_position in candidate_positions:
+                    j = int(order[candidate_position])
+                    if j == i:
+                        continue
 
-                edges.append(
-                    {
-                        "id": str(uuid.uuid4()),
-                        "source_id": customers[i]["id"],
-                        "target_id": customers[j]["id"],
-                        "weight": float(min(score, 1.0)),
-                        "view": view,
-                        "reasons": reasons,
-                    }
-                )
+                    distance = abs(float(values[i]) - float(values[j]))
+                    score = math.exp(-distance / spec["scale"])
+                    ranked.append((score, j))
+
+                ranked.sort(reverse=True)
+
+                for score, j in ranked[:per_feature]:
+                    if score >= spec["threshold"]:
+                        add_edge(i, j, feature, score)
 
     return edges
 

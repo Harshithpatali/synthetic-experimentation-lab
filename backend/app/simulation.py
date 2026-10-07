@@ -212,7 +212,7 @@ def build_similarity_edges(
         pool = by_city[customer["city"]]
         candidate_count = min(60, max(1, len(pool) - 1))
 
-        candidates = r.choice(
+        candidates = rng.choice(
             pool,
             size=candidate_count,
             replace=False,

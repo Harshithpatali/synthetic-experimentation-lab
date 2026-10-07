@@ -465,6 +465,7 @@ def run_experiment(req: ExperimentCreate, db: Session = Depends(get_db)):
         customer_dicts,
         truth_by_customer,
         req.category,
+        req.experiment_type,
         req.treatment_share,
         req.seed,
     )
@@ -482,7 +483,10 @@ def run_experiment(req: ExperimentCreate, db: Session = Depends(get_db)):
             config={
                 "synthetic": True,
                 "hidden_variables_used": True,
+                "experiment_type": req.experiment_type,
+                "product": req.product,
                 "hypothesis": req.hypothesis,
+                "control_experience": req.control_experience,
                 "offer": req.offer,
                 "success_metric": req.success_metric,
                 "target_segment": req.target_segment,

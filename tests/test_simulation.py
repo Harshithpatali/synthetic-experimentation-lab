@@ -29,11 +29,21 @@ def test_hidden_boundary():
     assert "income" in population.truth[0]
 
 
-def test_confidence_interval():
+def test_confidence_interval_and_hypothesis_test():
     result = difference_in_proportions(100, 20, 100, 30)
 
     assert math.isclose(result["uplift"], 0.1)
     assert result["ci_low"] < 0.1 < result["ci_high"]
+
+    hypothesis = result["hypothesis_test"]
+    assert hypothesis["test"] == "Two-proportion z-test"
+    assert 0 <= hypothesis["p_value"] <= 1
+    assert hypothesis["p_value"] < 0.05
+    assert hypothesis["significant"] is True
+
+    power = result["power_analysis"]
+    assert 0 < power["mde_absolute"] < 1
+    assert 0 < power["target_power"] <= 1
 
 
 def test_neon_url_normalization():

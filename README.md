@@ -72,6 +72,43 @@ not a claim that the synthetic population matches real people. Real-world
 fidelity requires calibration against a reference dataset supplied by the
 company.
 
+## Real-data behavioral benchmark
+
+The repository now includes a small **real, non-synthetic reference sample**
+at:
+
+    data/reference/online_retail_real_sample.csv
+
+It contains 1,950 transaction rows from the public **UCI Online Retail II**
+dataset. UCI describes that dataset as real transaction data from a UK-based
+registered non-store online retailer and licenses it under **CC BY 4.0**.
+
+Citation:
+
+    Chen, D. (2012). Online Retail II [Dataset].
+    UCI Machine Learning Repository.
+    https://doi.org/10.24432/C5CG6D
+
+The application reconstructs customer-level reference behavior from the sample
+and compares the generated population on metrics that both datasets actually
+support:
+
+- order frequency
+- relative AOV distribution shape
+- recency
+- lifecycle composition
+
+The comparison uses empirical distribution distance. AOV is compared by
+relative shape rather than raw currency because the reference is priced in GBP
+while the synthetic application uses INR.
+
+This is deliberately a **behavioral benchmark**, not an Indian population
+representativeness claim. The source is UK retail transaction data, so it does
+not validate India-specific demographics, geography, device mix, or currency
+levels. A future calibration release can replace or supplement this benchmark
+with a verified Indian customer dataset when one with clear provenance and
+redistribution terms is available.
+
 ## Observable vs hidden variables
 
 Observable:
@@ -131,8 +168,11 @@ Network centrality is descriptive. It is not causal influence.
       requirements.txt
 
     tests/
+    data/
+      reference/
+        README.md
+        online_retail_real_sample.csv
     schema.sql
-    render.yaml
     docker-compose.yml
 
 

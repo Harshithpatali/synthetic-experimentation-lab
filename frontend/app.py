@@ -1757,6 +1757,16 @@ elif page == PAGE_NAMES[2]:
                         "value": pct(result["relative_uplift"]) if result["relative_uplift"] is not None else "N/A",
                         "sub": "Share of control rate",
                     },
+                    {
+                        "label": "P-value",
+                        "value": f"{result['hypothesis_test']['p_value']:.4f}",
+                        "sub": "Two-proportion z-test",
+                    },
+                    {
+                        "label": "80% power MDE",
+                        "value": pct(result["power_analysis"]["mde_absolute"]),
+                        "sub": "Approx. positive uplift",
+                    },
                 ]
             )
         except Exception as exc:
@@ -1782,6 +1792,8 @@ elif page == PAGE_NAMES[3]:
     treatment = result["treatment"]
     uplift = result["absolute_uplift"]
     ci_low, ci_high = result["ci_95"]
+    hypothesis_test = result.get("hypothesis_test", {})
+    power_analysis = result.get("power_analysis", {})
 
     kpi_row(
         [
@@ -1811,7 +1823,7 @@ elif page == PAGE_NAMES[3]:
     )
 
     st.write("")
-    tabs = st.tabs(["📈 Uplift & interval", "📊 Arm comparison", "🧩 Segments", "🧾 Raw data"])
+    tabs = st.tabs(["📈 Uplift & interval", "🧪 Hypothesis test", "📊 Arm comparison", "🧩 Segments", "🧾 Raw data"])
 
     # ---- Uplift tab ---------------------------------------------------------
     with tabs[0]:
@@ -1870,8 +1882,71 @@ elif page == PAGE_NAMES[3]:
 
         st.info(result["interpretation"])
 
-    # ---- Arm comparison -----------------------------------------------------
+    # ---- Hypothesis test & power --------------------------------------------
     with tabs[1]:
+        p_value = float(hypothesis_test.get("p_value", float("nan")))
+        alpha = float(hypothesis_test.get("alpha", 0.05))
+        significant = bool(hypothesis_test.get("significant", False))
+        mde = float(power_analysis.get("mde_absolute", 0.0))
+        mde_relative = power_analysis.get("mde_relative")
+
+        tone = "positive" if significant else "neutral"
+        tone_color = {
+            "positive": ("#ecfdf5", "#047857", "#a7f3d0"),
+            "neutral": ("#fffbeb", "#b45309", "#fde68a"),
+        }[tone]
+
+        st.markdown(
+            f"""
+            <div class="panel" style="background:{tone_color[0]};border-color:{tone_color[2]};">
+              <h4 style="color:{tone_color[1]};">Hypothesis test</h4>
+              <div class="desc">Two-sided two-proportion z-test for conversion rate.</div>
+              <div style="color:#334155;font-size:.92rem;line-height:1.8;">
+                <b>H₀:</b> treatment conversion = control conversion<br>
+                <b>H₁:</b> treatment conversion ≠ control conversion<br>
+                <b>α:</b> {alpha:.2f}<br>
+                <b>z-statistic:</b> {float(hypothesis_test.get("z_statistic", 0.0)):.3f}<br>
+                <b>p-value:</b> {p_value:.4f}<br>
+                <b>Decision:</b> {"Reject H₀" if significant else "Do not reject H₀"}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        p1, p2, p3 = st.columns(3)
+        with p1:
+            st.metric("P-value", f"{p_value:.4f}")
+        with p2:
+            st.metric("Statistically significant", "Yes" if significant else "No")
+        with p3:
+            st.metric("Approx. 80% power MDE", pct(mde))
+
+        st.info(
+            "The p-value describes evidence against the null hypothesis within "
+            "this simulated run. It does not represent the probability that the "
+            "treatment will work on real customers."
+        )
+
+        st.markdown(
+            f"""
+            <div class="panel" style="margin-top:14px;">
+              <h4>Experiment design sensitivity</h4>
+              <div class="desc">Approximate minimum positive conversion-rate uplift detectable with 80% power at α=0.05 using the current arm sizes.</div>
+              <div style="color:#334155;font-size:.92rem;line-height:1.8;">
+                <b>Baseline conversion:</b> {pct(power_analysis.get("baseline_rate", control["conversion_rate"]))}<br>
+                <b>Minimum detectable uplift:</b> {pct(mde)} absolute
+                {f" ({pct(mde_relative)} relative)" if mde_relative is not None else ""}<br>
+                <b>Interpretation:</b> effects materially smaller than this may be difficult to
+                detect reliably at the current sample size.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ---- Arm comparison -----------------------------------------------------
+    with tabs[2]:
         comparison = pd.DataFrame(
             [
                 {
@@ -1995,6 +2070,8 @@ else:
     ci_low, ci_high = result["ci_95"]
     uplift = result["absolute_uplift"]
     relative = result["relative_uplift"]
+    hypothesis_test = result.get("hypothesis_test", {})
+    power_analysis = result.get("power_analysis", {})
 
     if ci_low > 0:
         recommendation = (
@@ -2032,6 +2109,16 @@ else:
                 "label": "Relative uplift",
                 "value": pct(relative) if relative is not None else "N/A",
                 "sub": "Relative to control",
+            },
+            {
+                "label": "P-value",
+                "value": f"{float(hypothesis_test.get('p_value', float('nan'))):.4f}",
+                "sub": "Two-proportion z-test",
+            },
+            {
+                "label": "80% power MDE",
+                "value": pct(power_analysis.get("mde_absolute", 0.0)),
+                "sub": "Approx. minimum detectable uplift",
             },
         ]
     )
@@ -2129,13 +2216,34 @@ else:
         }
         st.dataframe(seg.style.format(fmt), use_container_width=True)
 
+    section("Hypothesis test & experiment power", "Statistical evidence for the simulated conversion-rate difference.")
+
+    st.markdown(
+        f"""
+        <div class="panel">
+          <div style="color:#334155;font-size:.92rem;line-height:1.85;">
+            <b>Test:</b> Two-sided two-proportion z-test<br>
+            <b>H₀:</b> treatment conversion = control conversion<br>
+            <b>H₁:</b> treatment conversion ≠ control conversion<br>
+            <b>α:</b> {float(hypothesis_test.get("alpha", 0.05)):.2f}<br>
+            <b>z-statistic:</b> {float(hypothesis_test.get("z_statistic", 0.0)):.3f}<br>
+            <b>p-value:</b> {float(hypothesis_test.get("p_value", float("nan"))):.4f}<br>
+            <b>Decision:</b> {"Reject H₀" if hypothesis_test.get("significant") else "Do not reject H₀"}<br>
+            <b>Approx. 80% power MDE:</b> {pct(power_analysis.get("mde_absolute", 0.0))}
+            {f" absolute ({pct(power_analysis.get('mde_relative'))} relative)" if power_analysis.get("mde_relative") is not None else ""}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     section("Risk and interpretation", "")
     st.warning(
-        "This is a synthetic experiment. The 95% confidence interval reflects "
-        "randomization/sampling variability within the synthetic run. It does not "
-        "capture uncertainty in simulator assumptions. A positive result is evidence "
-        "to consider a real-world pilot, not evidence that the same effect will occur "
-        "with real customers."
+        "This is a synthetic experiment. The 95% confidence interval and p-value "
+        "reflect randomization/sampling variability within the synthetic run. They do not "
+        "capture uncertainty in simulator assumptions. A statistically significant synthetic "
+        "result is evidence to consider a real-world pilot, not evidence that the same effect "
+        "will occur with real customers."
     )
 
     # ---- Downloads ----------------------------------------------------------
@@ -2170,6 +2278,10 @@ Treatment conversion: {result["treatment"]["conversion_rate"]:.2%}
 Absolute uplift: {result["absolute_uplift"]:.2%}
 Relative uplift: {relative_str}
 95% CI: [{result["ci_95"][0]:.2%}, {result["ci_95"][1]:.2%}]
+P-value: {float(hypothesis_test.get("p_value", float("nan"))):.4f}
+Statistically significant at alpha=0.05: {"Yes" if hypothesis_test.get("significant") else "No"}
+Approx. 80% power MDE: {power_analysis.get("mde_absolute", 0.0):.2%} absolute
+{f"Approx. 80% power MDE relative to baseline: {power_analysis.get('mde_relative'):.2%}" if power_analysis.get("mde_relative") is not None else ""}
 
 Control revenue: ₹{result["control"]["revenue"]:,.2f}
 Treatment revenue: ₹{result["treatment"]["revenue"]:,.2f}
@@ -2180,10 +2292,11 @@ Treatment revenue / customer: ₹{result["treatment"]["revenue_per_customer"]:,.
 {recommendation}
 
 ## Caveat
-The interval reflects randomization/sampling variability in the synthetic run,
-not simulator-assumption uncertainty. A positive synthetic result supports
-considering a real-world pilot; it does not prove the same effect will occur
-on real customers.
+The confidence interval and p-value reflect randomization/sampling variability
+in the synthetic run, not simulator-assumption uncertainty. The MDE is an
+approximate design sensitivity measure under a normal approximation. A positive
+or statistically significant synthetic result supports considering a real-world
+pilot; it does not prove the same effect will occur on real customers.
 """
 
     st.write("")

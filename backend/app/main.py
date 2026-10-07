@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .analytics import difference_in_proportions, segment_results
 from .population_quality import population_diagnostics
+from .reference_behavior import compare_to_real_reference, reference_summary
 from .config import CORS_ORIGINS
 from .db import Base, engine, get_db
 from .models import (
@@ -33,7 +34,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Synthetic Experimentation Lab API",
-    version="2.1.0",
+    version="2.2.0",
     description="Test experiments on a synthetic population before exposing real customers.",
     lifespan=lifespan,
 )
@@ -236,6 +237,47 @@ def population_diagnostics_endpoint(
     diagnostics["population_id"] = population_id
     diagnostics["generator_version"] = "latent-correlated-v2"
     return diagnostics
+
+
+@app.get("/population/{population_id}/reference-behavior")
+def population_reference_behavior(
+    population_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Compare shared transaction behavior with the bundled real-data reference.
+
+    The endpoint deliberately uses only observable fields shared by the
+    reference dataset: orders, AOV and recency. It never exposes simulator
+    truth variables.
+    """
+    rows = (
+        db.query(Customer)
+        .filter(Customer.population_id == population_id)
+        .all()
+    )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Population not found")
+
+    customers = [
+        {
+            "orders": customer.orders,
+            "aov": customer.aov,
+            "recency_days": customer.recency_days,
+        }
+        for customer in rows
+    ]
+
+    result = compare_to_real_reference(customers)
+    result["population_id"] = population_id
+    return result
+
+
+@app.get("/reference-behavior/summary")
+def reference_behavior_summary():
+    """Return metadata for the bundled real behavioral reference."""
+    return reference_summary()
 
 
 @app.get("/population/{population_id}")

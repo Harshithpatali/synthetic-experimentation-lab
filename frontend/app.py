@@ -255,6 +255,64 @@ div[data-testid="stExpander"]{
   margin-top:2.4rem; padding-top:1rem; border-top:1px solid var(--line);
   color:#94a3b8; font-size:.8rem; text-align:center;
 }
+/* ---------- Cyber intelligence map ---------- */
+.tech-map-shell{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(34,211,238,.22);
+  border-radius:20px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(34,211,238,.07), transparent 34%),
+    radial-gradient(circle at 82% 28%, rgba(168,85,247,.08), transparent 30%),
+    linear-gradient(180deg,#020617 0%,#030712 100%);
+  box-shadow:
+    0 0 0 1px rgba(34,211,238,.05),
+    0 0 42px rgba(34,211,238,.08),
+    inset 0 0 60px rgba(15,23,42,.85);
+}
+.tech-map-grid{
+  position:absolute; inset:0; pointer-events:none; opacity:.15;
+  background-image:
+    linear-gradient(rgba(34,211,238,.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,211,238,.22) 1px, transparent 1px);
+  background-size:38px 38px;
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.9),transparent 92%);
+}
+.tech-map-header{
+  position:relative; z-index:2;
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; padding:14px 17px;
+  border-bottom:1px solid rgba(34,211,238,.14);
+  background:linear-gradient(90deg,rgba(2,6,23,.96),rgba(15,23,42,.82));
+}
+.tech-map-title{
+  font-size:.72rem; font-weight:900; letter-spacing:.18em;
+  text-transform:uppercase; color:#67e8f9;
+}
+.tech-map-sub{
+  margin-top:3px; color:#cbd5e1; font-size:.78rem; font-weight:600;
+}
+.tech-status{
+  display:flex; align-items:center; gap:8px;
+  padding:7px 11px; border:1px solid rgba(52,211,153,.22);
+  border-radius:999px; background:rgba(6,78,59,.20);
+  color:#6ee7b7; font-size:.68rem; font-weight:900;
+  letter-spacing:.12em; text-transform:uppercase;
+  white-space:nowrap;
+}
+.tech-status-dot{
+  width:7px; height:7px; border-radius:50%;
+  background:#34d399; box-shadow:0 0 12px rgba(52,211,153,.95);
+}
+.tech-map-footer{
+  position:relative; z-index:2;
+  display:flex; justify-content:space-between; gap:16px;
+  padding:9px 13px;
+  border-top:1px solid rgba(34,211,238,.12);
+  color:#64748b; font-size:.68rem; letter-spacing:.06em;
+  text-transform:uppercase;
+  background:rgba(2,6,23,.92);
+}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -649,6 +707,27 @@ def build_india_map(
         for name, subset in groups:
             if subset.empty:
                 continue
+
+            marker_color = colors.get(name, TECH_MARKER_COLOR)
+
+            # Soft outer glow.
+            fig.add_trace(
+                go.Scattermap(
+                    lat=subset["lat"],
+                    lon=subset["lon"],
+                    mode="markers",
+                    marker=dict(
+                        size=max(marker_size * 2.4, 10),
+                        opacity=0.08,
+                        color=marker_color,
+                    ),
+                    hoverinfo="skip",
+                    name=f"{name} glow",
+                    showlegend=False,
+                )
+            )
+
+            # Bright intelligence-grid core.
             fig.add_trace(
                 go.Scattermap(
                     lat=subset["lat"],
@@ -656,8 +735,8 @@ def build_india_map(
                     mode="markers",
                     marker=dict(
                         size=marker_size,
-                        opacity=0.74,
-                        color=colors.get(name, TECH_MARKER_COLOR),
+                        opacity=0.92,
+                        color=marker_color,
                     ),
                     text=hover.loc[subset.index],
                     hovertemplate="%{text}<extra></extra>",
@@ -677,12 +756,12 @@ def build_india_map(
         paper_bgcolor="rgba(0,0,0,0)",
         uirevision="keep-zoom",
         hoverlabel=dict(
-            bgcolor="#0b1220" if dark else "white",
-            bordercolor="rgba(15,23,42,.12)",
+            bgcolor="#020617" if dark else "white",
+            bordercolor="rgba(34,211,238,.22)",
             font=dict(
                 family="Plus Jakarta Sans",
                 size=12,
-                color="#f8fafc" if dark else "#0b1220",
+                color="#e0f2fe" if dark else "#0b1220",
             ),
         ),
         legend=dict(
@@ -1255,25 +1334,16 @@ elif page == PAGE_NAMES[1]:
 
         st.markdown(
             """
-            <div style="
-                margin:.6rem 0 .75rem;
-                padding:12px 16px;
-                border-radius:14px;
-                border:1px solid rgba(94,231,255,.20);
-                background:linear-gradient(90deg, rgba(2,6,23,.96), rgba(15,23,42,.88));
-                box-shadow:0 0 24px rgba(34,211,238,.08);
-            ">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+            <div class="tech-map-shell">
+              <div class="tech-map-grid"></div>
+              <div class="tech-map-header">
                 <div>
-                  <div style="font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:#67e8f9;font-weight:800;">
-                    LIVE SYNTHETIC CUSTOMER GRAPH
-                  </div>
-                  <div style="margin-top:3px;color:#e2e8f0;font-weight:700;">
-                    Global cross-city behavioural similarity network
-                  </div>
+                  <div class="tech-map-title">◉ CUSTOMER INTELLIGENCE GRID // INDIA</div>
+                  <div class="tech-map-sub">Synthetic entities · cross-city observable similarity · live analysis layer</div>
                 </div>
-                <div style="color:#94a3b8;font-size:.76rem;text-align:right;">
-                  30K nodes · feature-coloured links · observable signals only
+                <div class="tech-status">
+                  <span class="tech-status-dot"></span>
+                  LIVE SIGNAL
                 </div>
               </div>
             </div>
@@ -1310,18 +1380,29 @@ elif page == PAGE_NAMES[1]:
                     density=density_mode,
                     height=map_height,
                 )
+                st.markdown('<div class="tech-map-shell">', unsafe_allow_html=True)
                 st.plotly_chart(
                     fig,
                     use_container_width=True,
                     config=PLOTLY_CONFIG,
                     key="india_population_map",
                 )
+                st.markdown(
+                    """
+                    <div class="tech-map-footer">
+                      <span>NODE FIELD: SYNTHETIC CUSTOMERS</span>
+                      <span>LINKS: OBSERVABLE SIGNALS ONLY</span>
+                      <span>MODE: INTELLIGENCE / EXPLORATION</span>
+                    </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
                 st.caption(
-                    "Base map is geographic. Points are synthetic customer locations. "
-                    "An edge represents **measurable observable similarity**, not a causal "
-                    "relationship. Only the strongest requested edges are drawn so the "
-                    "30,000-customer map stays responsive."
+                    "The visual theme is intentionally cyber/command-center inspired. "
+                    "Geography and similarity semantics remain the same: an edge means "
+                    "**measurable observable similarity**, not causality."
                 )
 
         # ---- Distributions tab ---------------------------------------------

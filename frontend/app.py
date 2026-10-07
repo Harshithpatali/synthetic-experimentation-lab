@@ -975,6 +975,32 @@ elif page == PAGE_NAMES[1]:
                 selected_edge_features,
             )
 
+        if (
+            show_edges
+            and selected_edge_features
+            and not network_payload.get("edges")
+        ):
+            st.warning(
+                "This population does not yet have the new global feature-level "
+                "network. Rebuild it once to add cross-city edges and colour-coded "
+                "feature relationships."
+            )
+            if st.button(
+                "🔄 Rebuild global cross-city similarity network",
+                type="primary",
+                use_container_width=True,
+            ):
+                with st.spinner("Rebuilding the global feature network…"):
+                    rebuild = post(
+                        f"/population/{population_id}/network/rebuild",
+                        {},
+                    )
+                load_network.clear()
+                st.success(
+                    f"Rebuilt {rebuild.get('edges_rebuilt', 0):,} feature-level edges."
+                )
+                st.rerun()
+
         visible_ids = set(visible_points["id"])
         visible_edges = [
             edge

@@ -7,6 +7,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.orm import Session
 
 from .analytics import difference_in_proportions, segment_results
+from .population_quality import population_diagnostics
 from .config import CORS_ORIGINS
 from .db import Base, engine, get_db
 from .models import (
@@ -73,7 +74,10 @@ def create_population(req: PopulationCreate, db: Session = Depends(get_db)):
             id=population_id,
             seed=req.seed,
             size=req.size,
-            config={"hidden_variables_internal": True},
+            config={
+                "hidden_variables_internal": True,
+                "generator_version": "latent-correlated-v2",
+            },
         )
     )
     # Flush the parent row before bulk-inserting children. SQLAlchemy delays
@@ -179,6 +183,59 @@ def rebuild_population_network(
         "edges_rebuilt": len(edges),
         "network": "global cross-city feature similarity",
     }
+
+
+@app.get("/population/{population_id}/diagnostics")
+def population_diagnostics_endpoint(
+    population_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Return generator-consistency diagnostics for an existing population.
+
+    Income is joined internally because it is part of the hidden simulator
+    state; it is used only for diagnostics and is never returned to the
+    company-facing population payload.
+    """
+    rows = (
+        db.query(
+            Customer,
+            SimulatorTruth.income,
+        )
+        .join(
+            SimulatorTruth,
+            SimulatorTruth.customer_id == Customer.id,
+        )
+        .filter(Customer.population_id == population_id)
+        .all()
+    )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Population not found")
+
+    customers = []
+    for customer, income in rows:
+        customers.append(
+            {
+                "age": customer.age,
+                "city": customer.city,
+                "state": customer.state,
+                "device": customer.device,
+                "gender": customer.gender,
+                "customer_type": customer.customer_type,
+                "orders": customer.orders,
+                "aov": customer.aov,
+                "recency_days": customer.recency_days,
+                "sessions_30d": customer.sessions_30d,
+                "cart_abandonments": customer.cart_abandonments,
+                "income": income,
+            }
+        )
+
+    diagnostics = population_diagnostics(customers)
+    diagnostics["population_id"] = population_id
+    diagnostics["generator_version"] = "latent-correlated-v2"
+    return diagnostics
 
 
 @app.get("/population/{population_id}")

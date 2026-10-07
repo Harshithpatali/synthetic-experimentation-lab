@@ -78,6 +78,50 @@ def sigmoid(x):
     return float(1 / (1 + np.exp(-np.clip(x, -30, 30))))
 
 
+def _sigmoid_array(x):
+    return 1.0 / (1.0 + np.exp(-np.clip(x, -30, 30)))
+
+
+def _sample_correlated_latents(rng, size):
+    """
+    Low-dimensional Gaussian factor model used to induce realistic
+    dependencies between customer attributes.
+
+    This is intentionally lightweight: no external statistical dependency is
+    required, and the existing database schema remains unchanged.
+    """
+    correlation = np.array(
+        [
+            [1.00, 0.28, 0.15, -0.20, 0.15, 0.08],
+            [0.28, 1.00, 0.22, -0.10, 0.28, 0.12],
+            [0.15, 0.22, 1.00, -0.18, 0.42, 0.18],
+            [-0.20, -0.10, -0.18, 1.00, -0.15, 0.04],
+            [0.15, 0.28, 0.42, -0.15, 1.00, 0.22],
+            [0.08, 0.12, 0.18, 0.04, 0.22, 1.00],
+        ],
+        dtype=float,
+    )
+
+    # Numerical safety in case tiny floating-point differences make the
+    # intended positive-definite matrix marginally invalid.
+    eigenvalues = np.linalg.eigvalsh(correlation)
+    if eigenvalues.min() <= 1e-8:
+        correlation += np.eye(correlation.shape[0]) * (
+            1e-8 - eigenvalues.min()
+        )
+
+    chol = np.linalg.cholesky(correlation)
+    normals = rng.normal(size=(size, 6)) @ chol.T
+    return {
+        "socioeconomic": normals[:, 0],
+        "engagement": normals[:, 1],
+        "digital": normals[:, 2],
+        "price": normals[:, 3],
+        "novelty": normals[:, 4],
+        "risk": normals[:, 5],
+    }
+
+
 def generate_population(size, seed):
     r = np.random.default_rng(seed)
 
@@ -85,62 +129,238 @@ def generate_population(size, seed):
     city_weights = city_weights / city_weights.sum()
     city_idx = r.choice(len(CITIES), size=size, p=city_weights)
 
-    age = np.clip(r.normal(34, 10, size), 18, 70).round().astype(int)
-    gender = r.choice(["Female", "Male"], size=size, p=[0.48, 0.52])
-    orders = r.poisson(np.clip(5.5 - (age - 35) * 0.02, 1, 8), size)
-    aov = np.round(np.exp(r.normal(np.log(1100), 0.45, size)), 2)
-    recency = np.clip(r.gamma(2.2, 18, size), 1, 180).round().astype(int)
-    sessions = np.maximum(1, r.poisson(7, size))
-    abandon = np.minimum(sessions, r.binomial(sessions, 0.28))
+    latents = _sample_correlated_latents(r, size)
+    socioeconomic = latents["socioeconomic"]
+    engagement = latents["engagement"]
+    digital = latents["digital"]
+    price_latent = latents["price"]
+    novelty_latent = latents["novelty"]
+    risk_latent = latents["risk"]
 
-    device = r.choice(
-        ["Mobile", "Desktop", "Tablet"],
+    age = np.clip(
+        np.round(34 + 9.5 * socioeconomic + 7.0 * r.normal(size=size)),
+        18,
+        70,
+    ).astype(int)
+
+    gender = r.choice(
+        ["Female", "Male"],
         size=size,
-        p=[0.68, 0.25, 0.07],
-    )
-    customer_type = np.where(
-        orders >= 10,
-        "Loyal",
-        np.where(orders >= 3, "Repeat", "New"),
+        p=[0.48, 0.52],
     )
 
+    # Correlated economic behaviour: income depends on age and a latent
+    # socioeconomic factor rather than being independent of the customer.
     income = np.clip(
-        r.lognormal(np.log(65000), 0.55, size),
+        np.exp(
+            np.log(65000)
+            + 0.42 * socioeconomic
+            + 0.18 * ((age - 34) / 10.0)
+            + 0.28 * r.normal(size=size)
+        ),
         18000,
         500000,
     )
-    profession = r.choice(
-        PROFESSIONS,
-        size=size,
-        p=[0.20, 0.12, 0.12, 0.12, 0.15, 0.12, 0.09, 0.08],
+
+    # Digital engagement influences sessions and purchase frequency.
+    order_lambda = np.exp(
+        np.clip(
+            np.log(5.0)
+            + 0.20 * socioeconomic
+            + 0.48 * engagement
+            - 0.014 * (age - 35),
+            np.log(0.8),
+            np.log(18.0),
+        )
+    )
+    orders = r.poisson(order_lambda)
+
+    # AOV is linked to income and purchasing activity.
+    aov = np.exp(
+        np.log(850.0)
+        + 0.30 * socioeconomic
+        + 0.065 * np.log1p(orders)
+        + 0.10 * ((age - 34) / 10.0)
+        + 0.20 * r.normal(size=size)
+    )
+    aov = np.clip(aov, 250, 50000).round(2)
+
+    session_lambda = np.exp(
+        np.clip(
+            np.log(5.0)
+            + 0.42 * engagement
+            + 0.20 * np.log1p(orders)
+            + 0.20 * digital,
+            np.log(1.0),
+            np.log(40.0),
+        )
+    )
+    sessions = np.maximum(1, r.poisson(session_lambda))
+
+    # Latent price sensitivity is bounded and correlated with income and
+    # engagement rather than being a completely independent random variable.
+    price_sensitivity = np.clip(
+        0.62 * r.beta(2.2, 2.0, size)
+        + 0.38 * _sigmoid_array(-0.80 * price_latent + 0.20 * (age < 30)),
+        0,
+        1,
     )
 
-    price = r.beta(2.2, 2.0, size)
-    novelty = r.beta(2, 2, size)
-    risk = r.beta(2.5, 2.5, size)
+    novelty_preference = np.clip(
+        0.60 * r.beta(2.0, 2.0, size)
+        + 0.40 * _sigmoid_array(0.90 * novelty_latent + 0.22 * digital),
+        0,
+        1,
+    )
 
+    risk_preference = np.clip(
+        0.60 * r.beta(2.5, 2.5, size)
+        + 0.40 * _sigmoid_array(0.75 * risk_latent + 0.18 * novelty_latent),
+        0,
+        1,
+    )
+
+    # Recency is a behavioural outcome: engaged customers tend to have more
+    # recent activity, while price-sensitive customers tend to return less often.
+    recency_scale = np.exp(
+        np.clip(
+            np.log(19.0)
+            - 0.36 * engagement
+            + 0.18 * price_sensitivity,
+            np.log(5.0),
+            np.log(55.0),
+        )
+    )
+    recency = np.clip(
+        r.gamma(2.2, recency_scale),
+        1,
+        180,
+    ).round().astype(int)
+
+    # Device mix depends on age and digital behaviour.
+    p_mobile = np.clip(
+        0.68
+        - 0.010 * ((age - 34) / 10.0)
+        + 0.07 * _sigmoid_array(digital),
+        0.50,
+        0.86,
+    )
+    p_desktop = np.clip(
+        0.24
+        + 0.025 * ((age - 34) / 10.0)
+        - 0.04 * _sigmoid_array(digital),
+        0.10,
+        0.36,
+    )
+    p_tablet = np.clip(1.0 - p_mobile - p_desktop, 0.03, 0.20)
+
+    # Renormalise the three probabilities row-by-row.
+    total = p_mobile + p_desktop + p_tablet
+    p_mobile /= total
+    p_desktop /= total
+
+    u_device = r.random(size)
+    device = np.where(
+        u_device < p_mobile,
+        "Mobile",
+        np.where(
+            u_device < p_mobile + p_desktop,
+            "Desktop",
+            "Tablet",
+        ),
+    )
+
+    # Cart abandonment is explicitly linked to friction, price sensitivity and
+    # engagement. This gives checkout experiments a meaningful behavioural base.
+    abandon_probability = np.clip(
+        _sigmoid_array(
+            -1.30
+            + 0.85 * price_sensitivity
+            + 0.28 * ((device == "Mobile") == False)
+            - 0.38 * engagement
+        ),
+        0.08,
+        0.70,
+    )
+    abandon = np.minimum(
+        sessions,
+        r.binomial(sessions, abandon_probability),
+    )
+
+    # Customer lifecycle is a function of accumulated orders and recent activity.
+    customer_type = np.where(
+        (orders >= 8) & (recency <= 70),
+        "Loyal",
+        np.where(
+            (orders >= 2) & (recency <= 120),
+            "Repeat",
+            "New",
+        ),
+    )
+
+    # Profession is hidden, but its distribution is conditioned on age and
+    # socioeconomic context to avoid an independent one-hot draw.
+    profession_scores = np.array(
+        [
+            0.18 * np.ones(size),  # Engineer
+            0.10 * np.ones(size),  # Teacher
+            0.11 * np.ones(size),  # Finance
+            0.10 * np.ones(size),  # Healthcare
+            0.14 * np.ones(size),  # Business
+            0.11 * np.ones(size),  # Student
+            0.09 * np.ones(size),  # Government
+            0.07 * np.ones(size),  # Other
+        ]
+    )
+
+    profession_scores[5] += 0.36 * (age < 24)
+    profession_scores[6] += 0.10 * (age > 38)
+    profession_scores[1] += 0.06 * (age > 30)
+    profession_scores[4] += 0.07 * _sigmoid_array(socioeconomic)
+    profession_scores[0] += 0.05 * _sigmoid_array(digital)
+
+    profession_scores = np.maximum(profession_scores, 0.01)
+    profession_scores /= profession_scores.sum(axis=0, keepdims=True)
+
+    u_profession = r.random(size)
+    cumulative_profession = np.cumsum(profession_scores, axis=0)
+    profession_idx = (u_profession[None, :] > cumulative_profession).sum(axis=0)
+    profession = np.asarray(PROFESSIONS)[profession_idx]
+
+    # Category affinity uses the latent behavioural factors, creating
+    # interpretable heterogeneity across products.
     beauty = np.clip(
-        0.45
-        + 0.15 * (gender == "Female")
-        + 0.20 * novelty
-        - 0.10 * price
-        + r.normal(0, 0.12, size),
+        _sigmoid_array(
+            -0.15
+            + 0.55 * novelty_preference
+            - 0.40 * price_sensitivity
+            + 0.25 * (gender == "Female")
+            + 0.10 * socioeconomic
+            + 0.18 * r.normal(size=size)
+        ),
         0,
         1,
     )
     electronics = np.clip(
-        0.40
-        + 0.15 * (gender == "Male")
-        + 0.15 * (age < 35)
-        + 0.15 * r.beta(2, 2, size),
+        _sigmoid_array(
+            -0.10
+            + 0.42 * novelty_preference
+            + 0.30 * _sigmoid_array(digital)
+            + 0.18 * (age < 35)
+            + 0.10 * risk_preference
+            + 0.18 * r.normal(size=size)
+        ),
         0,
         1,
     )
     grocery = np.clip(
-        0.55
-        + 0.10 * (age > 40)
-        + 0.10 * (income < 70000)
-        + r.normal(0, 0.08, size),
+        _sigmoid_array(
+            0.20
+            + 0.22 * (age > 40)
+            + 0.18 * (income < 70000)
+            + 0.12 * customer_type == "Loyal"
+            + 0.15 * r.normal(size=size)
+        ),
         0,
         1,
     )
@@ -177,9 +397,9 @@ def generate_population(size, seed):
                 "customer_id": customer_id,
                 "profession": str(profession[i]),
                 "income": float(income[i]),
-                "price_sensitivity": float(price[i]),
-                "novelty_preference": float(novelty[i]),
-                "risk_preference": float(risk[i]),
+                "price_sensitivity": float(price_sensitivity[i]),
+                "novelty_preference": float(novelty_preference[i]),
+                "risk_preference": float(risk_preference[i]),
                 "beauty_affinity": float(beauty[i]),
                 "electronics_affinity": float(electronics[i]),
                 "grocery_affinity": float(grocery[i]),
@@ -187,7 +407,6 @@ def generate_population(size, seed):
         )
 
     return Population(customers, truth)
-
 
 def build_similarity_edges(
     customers,

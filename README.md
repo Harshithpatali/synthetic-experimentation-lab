@@ -2,52 +2,91 @@
 
 **Test the experiment before testing it on real customers.**
 
-A Python data-science platform where a company defines an experiment, a synthetic population is randomized into control/treatment, heterogeneous simulated outcomes are generated, and the company inspects uplift, uncertainty and segment behavior before deciding whether to run a real-world pilot.
+A Python data-science platform that creates a synthetic customer population, randomizes customers into control/treatment, simulates heterogeneous outcomes, and lets a company inspect uplift, uncertainty, segments, and observable similarity structure before running a real-world pilot.
 
 ## Final architecture
 
-```
-Streamlit
-   │ HTTP
-   ▼
-Cloudflare Worker
-   │
-   ▼
-Cloudflare Container
-   │ FastAPI + Python
-   ▼
-Neon PostgreSQL
-```
+    Streamlit Cloud
+          |
+          | HTTPS
+          v
+    Cloudflare Container
+          |
+          v
+    FastAPI + Python
+          |
+          v
+    Neon PostgreSQL
 
-The frontend is **Streamlit**. The backend is **FastAPI + Python running inside a Cloudflare Container**. Neon is the only application database/storage system. There is no React frontend and no Cloudflare R2 dependency.
+- Frontend: Streamlit
+- Backend: FastAPI + Python
+- Database: Neon PostgreSQL
+- Backend packaging: Docker
+- Production backend: Cloudflare Containers
+- Production frontend: Streamlit Community Cloud
+- No React
+- No R2
+- No D1
 
-Cloudflare Containers are a good fit here because the backend keeps a normal Linux/Python runtime and Docker image instead of forcing the simulation into the Python Workers WebAssembly runtime.
+## Repository
+
+    backend/
+      app/
+        main.py
+        simulation.py
+        analytics.py
+        models.py
+        schemas.py
+        db.py
+        config.py
+      Dockerfile
+      requirements.txt
+
+    frontend/
+      app.py
+      Dockerfile
+      requirements.txt
+
+    src/
+      index.js              # Cloudflare routing only
+
+    schema.sql
+    docker-compose.yml
+    wrangler.toml
+    package.json
+    tests/
+
+The actual application backend is Python/FastAPI. The small JavaScript file only connects Cloudflare's container runtime to the FastAPI container.
 
 ## Product flow
 
-```
-Company experiment idea
-        ↓
-Synthetic population
-        ↓
-Observable + simulator-hidden behavior
-        ↓
-Random control / treatment assignment
-        ↓
-Simulated customer responses
-        ↓
-Uplift + uncertainty + segment analysis
-        ↓
-Company decides whether to run a real-world pilot
-```
+    Company experiment idea
+             |
+             v
+    Synthetic population
+             |
+             v
+    Observable + hidden simulator behavior
+             |
+             v
+    Random control / treatment assignment
+             |
+             v
+    Simulated customer responses
+             |
+             v
+    Uplift + uncertainty + segment analysis
+             |
+             v
+    Decision about a real-world pilot
 
 ## Observable vs hidden variables
 
-### Company-observable
-
+Observable:
 - age
 - gender
-- city/state and approximate location
+- city/state
+- approximate location
 - device
 - customer type
 - orders
@@ -56,8 +95,7 @@ Company decides whether to run a real-world pilot
 - sessions
 - cart abandonment
 
-### Simulator-internal
-
+Hidden simulator variables:
 - profession
 - income
 - price sensitivity
@@ -65,186 +103,118 @@ Company decides whether to run a real-world pilot
 - risk preference
 - category affinity
 
-The company-facing population endpoint never returns the hidden simulator fields.
+Hidden variables create heterogeneous behavior but are never returned by the company-facing population API.
 
 ## Graph semantics
 
-The graph represents **measurable evidence of similarity**.
+The graph represents measurable evidence of similarity.
 
-An edge does not prove that two customers are truly similar.
+An edge does not prove two customers are truly similar.
 
-Likewise:
+No edge does not mean no similarity.
 
-> **No edge ≠ no similarity**
+It means similarity was not sufficiently observable/measurable under the selected graph construction.
 
-It means that similarity was not sufficiently observable/measurable under the selected graph construction.
+The simulator-truth network is an internal diagnostic that uses hidden behavioral structure.
 
-The simulator-truth network is an internal diagnostic showing how hidden structure can differ from observable structure.
+## Local development
 
-## Run locally
+Create a .env file from .env.example and put your Neon connection string in DATABASE_URL.
 
-Install Docker Desktop and run:
+    docker compose up --build
 
-```bash
-docker build -f Dockerfile.api -t synthetic-lab-api .
-docker run --rm -p 8000:8000 -e DATABASE_URL="YOUR_NEON_CONNECTION_STRING" synthetic-lab-api
-```
+Open:
 
-Run Streamlit separately:
+    http://localhost:8501
 
-```bash
-pip install -r requirements.txt
-API_BASE_URL=http://localhost:8000 streamlit run streamlit_app.py
-```
+FastAPI:
 
-## Neon setup
+    http://localhost:8000/docs
 
-Run `schema.sql` against your Neon PostgreSQL database.
+Run tests:
 
-Then obtain the Neon connection string.
+    pip install -r backend/requirements.txt pytest
+    pytest -q
 
-Do not commit it.
+## Neon
 
-The Cloudflare Container receives it as the `DATABASE_URL` Worker secret.
+Neon is the only persistent application database.
 
-## Cloudflare backend
+Run schema.sql once against your Neon PostgreSQL database.
 
-This repository uses Cloudflare Containers.
+Then use:
 
-Requirements:
+    DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
 
-- Cloudflare Workers Paid plan
-- Docker-compatible build environment
-- Cloudflare API token
-- Cloudflare account ID
-- Neon PostgreSQL connection string
+Do not commit this value.
 
-Cloudflare builds the `Dockerfile.api`, deploys the FastAPI container, and exposes it through the Worker.
+## Manual Cloudflare deployment
 
-The Worker itself is only a thin routing layer. Your actual application backend remains Python/FastAPI.
+The production backend is the Dockerized FastAPI application.
 
-## GitHub Actions secrets
+Prerequisites:
+1. Cloudflare account with Containers enabled.
+2. Docker installed and running.
+3. Node.js and npm installed.
+4. Neon PostgreSQL connection string.
 
-Add:
+Install the Cloudflare deployment tooling:
 
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
-```
+    npm install
+    npx wrangler login
 
-Do **not** add `DATABASE_URL` to GitHub unless you deliberately want GitHub Actions to use the database.
+Store the Neon connection string as a Cloudflare Worker secret:
 
-The deployment workflow deploys the Worker/container. The Neon credential is a Cloudflare Worker secret.
+    npx wrangler secret put DATABASE_URL
 
-## Cloudflare secret
+Deploy manually:
 
-Create:
+    npx wrangler deploy
 
-```text
-DATABASE_URL
-```
+Cloudflare builds backend/Dockerfile, starts FastAPI on port 8000, and passes the DATABASE_URL Worker secret into the container.
 
-Set it to your Neon PostgreSQL connection string.
+After deployment, verify:
 
-For example:
+    https://YOUR-WORKER.workers.dev/health
 
-```text
-postgresql+psycopg://USER:PASSWORD@HOST/DBNAME?sslmode=require
-```
+FastAPI docs:
 
-Cloudflare passes this secret into the FastAPI container as the `DATABASE_URL` environment variable.
+    https://YOUR-WORKER.workers.dev/docs
 
-## Deploy
+Cloudflare's current Containers documentation recommends the Durable Object Container API for new applications and supports passing environment variables into the container at startup. The repository uses that pattern for the Neon connection string.
 
-Install dependencies:
+## Streamlit Cloud deployment
 
-```bash
-npm install
-```
+Deploy the frontend application from:
 
-Authenticate Wrangler:
+    frontend/app.py
 
-```npx wrangler login
-```
+Set this Streamlit environment variable:
 
-Set the database secret:
+    API_BASE_URL=https://YOUR-WORKER.workers.dev
 
-```npx wrangler secret put DATABASE_URL
-```
+Streamlit only talks to FastAPI over HTTPS.
 
-Deploy:
+Streamlit does not receive the Neon password.
 
-```npx wrangler deploy
-```
+## Secrets
 
-Or push to `main` and GitHub Actions will deploy using:
+Cloudflare:
 
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
-```
+    DATABASE_URL
 
-After deployment, your API will be available at the Worker URL, for example:
+Streamlit Cloud:
 
-```text
-https://synthetic-experimentation-lab.<your-subdomain>.workers.dev
-```
+    API_BASE_URL
 
-FastAPI documentation:
+GitHub Actions does not need Cloudflare credentials because this project is intended to be deployed manually to Cloudflare.
 
-```text
-https://synthetic-experimentation-lab.<your-subdomain>.workers.dev/docs
-```
-
-Health:
-
-```text
-https://synthetic-experimentation-lab.<your-subdomain>.workers.dev/health
-```
-
-## Streamlit deployment
-
-Deploy the Streamlit frontend separately.
-
-Set this environment variable in the Streamlit deployment:
-
-```text
-API_BASE_URL=https://synthetic-experimentation-lab.<your-subdomain>.workers.dev
-```
-
-The Streamlit application calls FastAPI over HTTPS.
-
-No Neon password is needed in Streamlit.
-
-## Security boundary
-
-```
-Streamlit
-   │
-   │ public API requests
-   ▼
-Cloudflare
-   │
-   ▼
-FastAPI container
-   │
-   │ DATABASE_URL secret
-   ▼
-Neon PostgreSQL
-```
-
-Only the backend needs database credentials.
-
-Never expose:
-
-- Neon password
-- DATABASE_URL
-- Cloudflare API token
-
-to Streamlit.
+If you later automate deployment, add:
+- CLOUDFLARE_API_TOKEN
+- CLOUDFLARE_ACCOUNT_ID
 
 ## Statistical warning
 
-The 95% interval describes randomization/sampling variability in the synthetic run. It does **not** capture uncertainty from the simulator assumptions.
+The 95% confidence interval describes randomization/sampling variability in the synthetic run. It does not capture uncertainty from simulator assumptions.
 
-A positive simulated uplift is a reason to consider a real-world pilot, not evidence that the real experiment will have the same effect.
+A positive simulated uplift is a reason to consider a real-world pilot, not evidence that the real experiment will achieve the same effect.

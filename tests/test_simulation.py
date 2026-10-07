@@ -1,3 +1,5 @@
+import math
+
 from backend.app.analytics import difference_in_proportions
 from backend.app.config import normalize_database_url
 from backend.app.simulation import generate_population
@@ -22,7 +24,7 @@ def test_hidden_boundary():
 def test_confidence_interval():
     result = difference_in_proportions(100, 20, 100, 30)
 
-    assert result["uplift"] == 0.1
+    assert math.isclose(result["uplift"], 0.1)
     assert result["ci_low"] < 0.1 < result["ci_high"]
 
 

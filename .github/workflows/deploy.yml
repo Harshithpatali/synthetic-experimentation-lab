@@ -15,7 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npx wrangler --version
       - run: npx wrangler d1 execute synthetic-experimentation-lab --file=./schema.sql --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

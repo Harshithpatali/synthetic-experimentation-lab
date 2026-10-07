@@ -1,10 +1,9 @@
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 __pycache__/
 .pytest_cache/
 .venv/
 *.pyc
 .DS_Store
-.wrangler/
-node_modules/

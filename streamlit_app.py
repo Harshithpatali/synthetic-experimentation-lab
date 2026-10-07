@@ -8,7 +8,7 @@ API=os.getenv("API_BASE_URL","http://localhost:8000").rstrip("/")
 st.set_page_config(page_title="Synthetic Experimentation Lab",page_icon="🧪",layout="wide")
 st.markdown("# 🧪 Synthetic Experimentation Lab")
 st.markdown("### Test the experiment before testing it on real customers.")
-st.caption("A virtual customer population laboratory. Results are simulations under explicit assumptions, not predictions of real customers.")
+st.caption("A virtual customer population laboratory. Backend: FastAPI on Cloudflare Containers. Database: Neon PostgreSQL.")
 
 def api_get(path,**params):
     response=requests.get(API+path,params=params,timeout=60); response.raise_for_status(); return response.json()

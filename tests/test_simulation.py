@@ -5,6 +5,7 @@ import numpy as np
 from backend.app.analytics import difference_in_proportions
 from backend.app.config import normalize_database_url
 from backend.app.population_quality import population_diagnostics
+from backend.app.reference_behavior import compare_to_real_reference, load_reference_profiles
 from backend.app.simulation import (
     build_similarity_edges,
     generate_population,
@@ -127,6 +128,26 @@ def test_population_diagnostics():
     assert diagnostics["sample_size"] == 1000
     assert 0 <= diagnostics["score"] <= 100
     assert diagnostics["checks"]
+
+
+def test_real_reference_behavior_benchmark():
+    population = generate_population(500, 2026)
+
+    reference_profiles = load_reference_profiles()
+    assert reference_profiles
+    assert len(reference_profiles) > 0
+
+    result = compare_to_real_reference(population.customers)
+
+    assert result["reference_source"]["name"] == "UCI Online Retail II"
+    assert result["reference_source"]["license"] == "CC BY 4.0"
+    assert result["reference_source"]["sample_rows"] == 1950
+    assert 0 <= result["score"] <= 100
+
+    for metric in ("orders", "aov", "recency"):
+        assert metric in result["metrics"]
+        assert 0 <= result["metrics"][metric]["score"] <= 100
+        assert 0 <= result["metrics"][metric]["ks_distance"] <= 1
 
 
 def test_multiple_experiment_types_produce_outcomes():

@@ -258,6 +258,7 @@ def generate_population(size, seed):
     total = p_mobile + p_desktop + p_tablet
     p_mobile /= total
     p_desktop /= total
+    p_tablet /= total
 
     u_device = r.random(size)
     device = np.where(

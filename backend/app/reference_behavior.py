@@ -1,18 +1,18 @@
 """
 Real-data behavioral benchmark for the synthetic population.
 
-The bundled CSV is a small, openly licensed sample of the UCI Online Retail
-dataset. It contains real transaction rows, not synthetic observations.
+The bundled CSV is a small, openly licensed sample of the real UCI Online
+Retail II transaction dataset. It contains real transaction rows, not
+synthetic observations.
 
-Important: this reference is a UK online retailer and is used only as a
-transaction-behavior benchmark. It does not validate India-specific
-demographics or geography.
+The reference retailer is UK-based, so this benchmark measures transferable
+transaction behavior only. It does not validate India-specific demographics,
+geography, device mix, or currency levels.
 """
 
 from __future__ import annotations
 
 import csv
-import math
 from collections import defaultdict
 from datetime import datetime
 from functools import lru_cache
@@ -29,30 +29,49 @@ REFERENCE_PATH = (
 )
 
 REFERENCE_SOURCE = {
-    "name": "UCI Online Retail",
+    "name": "UCI Online Retail II",
     "creator": "Daqing Chen",
-    "citation": "Chen, D. (2015). Online Retail. UCI Machine Learning Repository. https://doi.org/10.24432/C5BW33",
+    "citation": (
+        "Chen, D. (2012). Online Retail II [Dataset]. "
+        "UCI Machine Learning Repository. https://doi.org/10.24432/C5CG6D"
+    ),
     "license": "CC BY 4.0",
     "scope": "UK-based non-store online retailer",
     "sample_rows": 1950,
+    "sample_selection": "Small real-data benchmark sample; no synthetic rows added.",
 }
 
 
 def _is_valid_transaction(row: dict) -> bool:
-    invoice = str(row.get("InvoiceNo", "")).strip()
+    """Keep identifiable, positive product transactions from the real sample."""
+    invoice = str(row.get("Invoice", "")).strip()
     stock_code = str(row.get("StockCode", "")).strip().upper()
     customer_id = str(row.get("CustomerID", "")).strip()
 
-    if not customer_id or customer_id.lower() == "nan":
+    if not customer_id or customer_id.lower() in {"nan", "none"}:
         return False
+
+    # The source fixture uses the Online Retail II column name Invoice.
+    # C-prefixed invoices are cancellations.
     if not invoice or invoice.upper().startswith("C"):
         return False
-    if stock_code in {"POST", "D", "M", "DOT", "C2", "BANK CHARGES", "AMAZONFEE", "CRUK"}:
+
+    if stock_code in {
+        "POST",
+        "D",
+        "M",
+        "DOT",
+        "C2",
+        "BANK CHARGES",
+        "AMAZONFEE",
+        "CRUK",
+        "TEST001",
+    }:
         return False
 
     try:
         quantity = float(row["Quantity"])
-        unit_price = float(row["UnitPrice"])
+        unit_price = float(row["Price"])
         datetime.strptime(str(row["InvoiceDate"]), "%Y-%m-%d %H:%M:%S")
     except (KeyError, TypeError, ValueError):
         return False
@@ -65,7 +84,8 @@ def load_reference_profiles() -> tuple[dict, ...]:
     if not REFERENCE_PATH.exists():
         raise FileNotFoundError(
             f"Reference dataset not found at {REFERENCE_PATH}. "
-            "The repository must contain data/reference/online_retail_real_sample.csv."
+            "The repository must contain "
+            "data/reference/online_retail_real_sample.csv."
         )
 
     invoices_by_customer: dict[str, set[str]] = defaultdict(set)
@@ -82,9 +102,9 @@ def load_reference_profiles() -> tuple[dict, ...]:
                 continue
 
             customer_id = str(row["CustomerID"]).strip()
-            invoice = str(row["InvoiceNo"]).strip()
+            invoice = str(row["Invoice"]).strip()
             quantity = float(row["Quantity"])
-            unit_price = float(row["UnitPrice"])
+            unit_price = float(row["Price"])
             timestamp = datetime.strptime(
                 str(row["InvoiceDate"]),
                 "%Y-%m-%d %H:%M:%S",
@@ -135,9 +155,12 @@ def _quantile(values: list[float] | np.ndarray, q: float) -> float:
     return float(np.quantile(np.asarray(values, dtype=float), q))
 
 
-def _ks_distance(left: list[float], right: list[float]) -> float:
-    """Empirical CDF distance; equivalent to a two-sample KS statistic."""
-    if not left or not right:
+def _ks_distance(
+    left: list[float] | np.ndarray,
+    right: list[float] | np.ndarray,
+) -> float:
+    """Empirical CDF distance (two-sample KS statistic)."""
+    if len(left) == 0 or len(right) == 0:
         return 1.0
 
     a = np.sort(np.asarray(left, dtype=float))
@@ -149,11 +172,37 @@ def _ks_distance(left: list[float], right: list[float]) -> float:
     return float(np.max(np.abs(a_cdf - b_cdf)))
 
 
-def _distribution_score(real: list[float], synthetic: list[float]) -> dict:
-    distance = _ks_distance(real, synthetic)
+def _distribution_score(
+    real: list[float],
+    synthetic: list[float],
+    *,
+    metric: str,
+) -> dict:
+    """
+    Compare a shared metric with the two-sample KS distance.
+
+    AOV is compared by shape after each dataset is normalized by its own
+    median in log space. This avoids falsely penalising the comparison because
+    the real reference is priced in GBP while the synthetic app uses INR.
+    Orders and recency retain their native units.
+    """
+    if metric == "aov":
+        real_median = max(_quantile(real, 0.50), 1e-9)
+        synthetic_median = max(_quantile(synthetic, 0.50), 1e-9)
+        real_for_ks = np.log(np.asarray(real, dtype=float) / real_median)
+        synthetic_for_ks = np.log(
+            np.asarray(synthetic, dtype=float) / synthetic_median
+        )
+        distance = _ks_distance(real_for_ks, synthetic_for_ks)
+        comparison = "relative AOV shape"
+    else:
+        distance = _ks_distance(real, synthetic)
+        comparison = f"{metric} distribution"
+
     return {
         "score": round(max(0.0, 100.0 * (1.0 - distance)), 1),
         "ks_distance": round(distance, 4),
+        "comparison": comparison,
         "real_median": round(_quantile(real, 0.50), 2),
         "synthetic_median": round(_quantile(synthetic, 0.50), 2),
         "real_p25": round(_quantile(real, 0.25), 2),
@@ -185,8 +234,9 @@ def compare_to_real_reference(customers: list[dict]) -> dict:
     """
     Compare synthetic customer behavior to real transaction-derived behavior.
 
-    Shared metrics are deliberately limited to things the reference data
-    actually measures: order frequency, average order value, and recency.
+    The comparison is deliberately limited to fields the reference data can
+    support directly: order frequency, relative AOV distribution shape,
+    recency, and lifecycle composition.
     """
     reference = list(load_reference_profiles())
     if not reference:
@@ -208,9 +258,15 @@ def compare_to_real_reference(customers: list[dict]) -> dict:
     real_recency = [float(row["recency_days"]) for row in reference]
 
     distributions = {
-        "orders": _distribution_score(real_orders, synthetic_orders),
-        "aov": _distribution_score(real_aov, synthetic_aov),
-        "recency": _distribution_score(real_recency, synthetic_recency),
+        "orders": _distribution_score(
+            real_orders, synthetic_orders, metric="orders"
+        ),
+        "aov": _distribution_score(
+            real_aov, synthetic_aov, metric="aov"
+        ),
+        "recency": _distribution_score(
+            real_recency, synthetic_recency, metric="recency"
+        ),
     }
 
     real_types = [
@@ -260,7 +316,7 @@ def compare_to_real_reference(customers: list[dict]) -> dict:
             "This benchmark uses real UK online-retail transactions as a "
             "transaction-behavior reference. It does not establish that the "
             "synthetic Indian population matches Indian demographics, geography, "
-            "device usage, or other variables absent from the reference data."
+            "device usage, or currency levels."
         ),
     }
 
@@ -270,8 +326,14 @@ def reference_summary() -> dict:
     return {
         "source": REFERENCE_SOURCE,
         "customers": len(reference),
-        "median_orders": round(_quantile([row["orders"] for row in reference], 0.50), 2),
-        "median_aov": round(_quantile([row["aov"] for row in reference], 0.50), 2),
+        "median_orders": round(
+            _quantile([row["orders"] for row in reference], 0.50),
+            2,
+        ),
+        "median_aov": round(
+            _quantile([row["aov"] for row in reference], 0.50),
+            2,
+        ),
         "median_recency_days": round(
             _quantile([row["recency_days"] for row in reference], 0.50),
             2,

@@ -446,8 +446,8 @@ def hover_series(df: pd.DataFrame) -> pd.Series:
 # Interactive India map
 # -----------------------------------------------------------------------------
 MAP_STYLES = {
+    "Tech Dark": "carto-darkmatter",
     "Light (Carto Positron)": "carto-positron",
-    "Dark (Carto Dark)": "carto-darkmatter",
     "Streets (OpenStreetMap)": "open-street-map",
 }
 
@@ -476,23 +476,27 @@ EDGE_FEATURE_LABELS = {
 }
 
 EDGE_FEATURE_COLORS = {
-    "gender": "#ef4444",
-    "device": "#f59e0b",
-    "customer_type": "#10b981",
-    "age": "#3b82f6",
-    "orders": "#8b5cf6",
-    "aov": "#ec4899",
-    "recency": "#06b6d4",
+    "gender": "#ff4d67",
+    "device": "#ffb020",
+    "customer_type": "#2ee6a6",
+    "age": "#38bdf8",
+    "orders": "#a78bfa",
+    "aov": "#f472b6",
+    "recency": "#22d3ee",
     "sessions": "#84cc16",
-    "cart_abandonments": "#f97316",
+    "cart_abandonments": "#fb923c",
 }
+
+TECH_MAP_STYLE = "carto-darkmatter"
+TECH_MARKER_COLOR = "#5ee7ff"
+TECH_MARKER_BORDER = "#c4f7ff"
 
 
 def build_india_map(
     points: pd.DataFrame,
     edges: list[dict],
     *,
-    map_style: str = "carto-positron",
+    map_style: str = TECH_MAP_STYLE,
     show_edges: bool = True,
     edge_opacity: float = 0.22,
     marker_size: int = 7,
@@ -583,22 +587,35 @@ def build_india_map(
                 continue
 
             rgba = EDGE_FEATURE_COLORS.get(feature, "#64748b")
+            legend_name = EDGE_FEATURE_LABELS.get(
+                feature,
+                feature.replace("_", " ").title(),
+            )
+
+            # Two-layer rendering gives the network a subtle neon/glow effect
+            # without changing the underlying data or increasing edge count.
             fig.add_trace(
                 go.Scattermap(
                     lat=edge_lat,
                     lon=edge_lon,
                     mode="lines",
-                    line=dict(
-                        width=1.1,
-                        color=rgba,
-                    ),
+                    line=dict(width=5.0, color=rgba),
+                    opacity=min(edge_opacity * 0.42, 0.24),
+                    hoverinfo="skip",
+                    name=f"{legend_name} glow",
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scattermap(
+                    lat=edge_lat,
+                    lon=edge_lon,
+                    mode="lines",
+                    line=dict(width=1.15, color=rgba),
                     text=edge_hover,
                     hovertemplate="%{text}",
-                    opacity=max(0.15, min(edge_opacity * 2.2, 1.0)),
-                    name=EDGE_FEATURE_LABELS.get(
-                        feature,
-                        feature.replace("_", " ").title(),
-                    ),
+                    opacity=max(0.20, min(edge_opacity * 2.3, 0.95)),
+                    name=legend_name,
                     showlegend=True,
                 )
             )
@@ -634,8 +651,12 @@ def build_india_map(
                     mode="markers",
                     marker=dict(
                         size=marker_size,
-                        opacity=0.78,
-                        color=colors.get(name, "#6366f1"),
+                        opacity=0.74,
+                        color=colors.get(name, TECH_MARKER_COLOR),
+                        line=dict(
+                            color=TECH_MARKER_BORDER,
+                            width=0.35,
+                        ),
                     ),
                     text=hover.loc[subset.index],
                     hovertemplate="%{text}<extra></extra>",
@@ -1136,7 +1157,35 @@ elif page == PAGE_NAMES[1]:
             if edge["source"] in visible_ids and edge["target"] in visible_ids
         ]
 
-        tabs = st.tabs(["🗺️ Map", "📊 Distributions", "🧾 Data explorer"])
+        st.markdown(
+            """
+            <div style="
+                margin:.6rem 0 .75rem;
+                padding:12px 16px;
+                border-radius:14px;
+                border:1px solid rgba(94,231,255,.20);
+                background:linear-gradient(90deg, rgba(2,6,23,.96), rgba(15,23,42,.88));
+                box-shadow:0 0 24px rgba(34,211,238,.08);
+            ">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                <div>
+                  <div style="font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:#67e8f9;font-weight:800;">
+                    LIVE SYNTHETIC CUSTOMER GRAPH
+                  </div>
+                  <div style="margin-top:3px;color:#e2e8f0;font-weight:700;">
+                    Global cross-city behavioural similarity network
+                  </div>
+                </div>
+                <div style="color:#94a3b8;font-size:.76rem;text-align:right;">
+                  30K nodes · feature-coloured links · observable signals only
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        tabs = st.tabs(["🛰️ Network map", "📊 Distributions", "🧾 Data explorer"])
 
         # ---- Map tab --------------------------------------------------------
         with tabs[0]:

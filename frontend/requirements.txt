@@ -2,5 +2,3 @@ streamlit==1.65.0
 pandas==3.0.5
 plotly==7.1.0
 requests==2.34.2
-streamlit>=1.27.0
-jinja2>=3.0.0
